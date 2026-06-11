@@ -4,87 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>App Inventor 作業評分助手</title>
-    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <section class="topbar">
-        <div class="brand-mark" aria-hidden="true">✓</div>
-        <div>
-          <h1>App Inventor 作業評分助手</h1>
-          <p>建立作業、收件、初步評分與試算表紀錄</p>
-        </div>
-      </section>
-
-      <nav class="tabs" aria-label="頁面切換">
-        <button class="active" id="teacher-tab" type="button">老師建立作業</button>
-        <button id="student-tab" type="button">學生上傳作業</button>
-      </nav>
-
-      <section class="workspace-grid" id="teacher-panel">
-        <form class="panel" id="teacher-form">
-          <h2>老師端</h2>
-          <label>
-            作業名稱
-            <input name="title" required placeholder="例如：BMI 計算器" />
-          </label>
-          <label>
-            專案描述
-            <textarea name="description" required rows="7" placeholder="描述學生要完成的 App 功能、畫面與操作流程。"></textarea>
-          </label>
-          <label>
-            範例 .aia
-            <input name="sampleAia" type="file" accept=".aia" />
-          </label>
-          <button class="primary-action" type="submit">建立作業與評分規準</button>
-          <p class="error-text" id="teacher-error"></p>
-        </form>
-
-        <aside class="panel result-panel">
-          <h2>建立結果</h2>
-          <div id="teacher-result">
-            <p class="empty-state">建立完成後，這裡會出現作業代碼、試算表連結與 AI 評分規準。</p>
-          </div>
-        </aside>
-      </section>
-
-      <section class="workspace-grid hidden" id="student-panel">
-        <form class="panel" id="student-form">
-          <h2>學生端</h2>
-          <label>
-            作業代碼
-            <input name="assignmentId" required placeholder="老師提供的作業代碼" />
-          </label>
-          <label>
-            電子郵件
-            <input name="email" type="email" required placeholder="student@example.com" />
-          </label>
-          <div class="two-columns">
-            <label>
-              班級
-              <input name="className" required placeholder="801" />
-            </label>
-            <label>
-              座號
-              <input name="seatNumber" required placeholder="12" />
-            </label>
-          </div>
-          <label>
-            作業 .aia
-            <input name="homeworkAia" type="file" accept=".aia" required />
-          </label>
-          <button class="primary-action" type="submit">上傳並取得初評</button>
-          <p class="error-text" id="student-error"></p>
-        </form>
-
-        <aside class="panel result-panel">
-          <h2>評分結果</h2>
-          <div id="student-result">
-            <p class="empty-state">上傳後會看到 AI 初評與試算表紀錄連結。</p>
-          </div>
-        </aside>
-      </section>
-    </main>
-    <script src="/app.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
