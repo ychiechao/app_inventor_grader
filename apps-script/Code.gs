@@ -88,6 +88,10 @@ function getAssignment_(payload) {
 }
 
 function saveSubmission_(payload) {
+  if (Number(payload.submissionVersion || 0) !== 2) {
+    return saveSubmissionLegacy_(payload);
+  }
+
   const spreadsheet = openSpreadsheet_(payload.assignmentId);
   const folder = DriveApp.getFolderById(ROOT_FOLDER_ID);
   const submissions = spreadsheet.getSheetByName("submissions");
@@ -145,6 +149,39 @@ function saveSubmission_(payload) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function saveSubmissionLegacy_(payload) {
+  const spreadsheet = openSpreadsheet_(payload.assignmentId);
+  const folder = DriveApp.getFolderById(ROOT_FOLDER_ID);
+  const submissions = spreadsheet.getSheetByName("submissions");
+
+  let fileUrl = "";
+  if (payload.homeworkFile && payload.homeworkFile.base64) {
+    const prefix = String(payload.className || "class") + "-" + String(payload.seatNumber || "seat") + "-" + Date.now() + "-";
+    const file = saveBase64File_(folder, payload.homeworkFile, prefix);
+    fileUrl = file.getUrl();
+  }
+
+  submissions.appendRow([
+    new Date(),
+    payload.email || "",
+    payload.className || "",
+    payload.seatNumber || "",
+    fileUrl,
+    payload.grade.interfaceScore,
+    payload.grade.logicScore,
+    payload.grade.correctnessScore,
+    payload.grade.totalScore,
+    payload.grade.feedback,
+    payload.aiaSummary || "",
+    payload.assignmentDescription || "",
+  ]);
+
+  return {
+    spreadsheetUrl: spreadsheet.getUrl(),
+    fileUrl: fileUrl,
+  };
 }
 
 function openSpreadsheet_(assignmentIdOrUrl) {

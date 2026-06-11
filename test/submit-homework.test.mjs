@@ -74,6 +74,7 @@ test("preview grades without saving, while final submission requires and saves s
         return jsonResponse({ ok: true, data: { description: "完成計算功能", rubric: [] } });
       }
       if (payload.action === "saveSubmission") {
+        assert.equal(payload.submissionVersion, 2);
         return jsonResponse({
           ok: true,
           data: {

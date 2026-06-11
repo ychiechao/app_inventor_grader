@@ -65,6 +65,7 @@ export async function onRequestPost({ request, env }) {
 
     const saved = await callAppsScript(env, {
       action: "saveSubmission",
+      submissionVersion: 2,
       assignmentId,
       email,
       className,

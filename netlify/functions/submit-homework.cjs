@@ -43,6 +43,7 @@ exports.handler = async (event) => {
 
     const saved = await callAppsScript({
       action: "saveSubmission",
+      submissionVersion: 2,
       assignmentId,
       email,
       className,
