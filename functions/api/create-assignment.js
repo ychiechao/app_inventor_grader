@@ -2,6 +2,27 @@ import { filePayload, summarizeAia } from "../_shared/aia.js";
 import { errorResponse, json } from "../_shared/http.js";
 import { callAppsScript, openaiJson } from "../_shared/services.js";
 
+const RUBRIC_SCHEMA = {
+  type: "object",
+  properties: {
+    rubric: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          points: { type: "integer" },
+          description: { type: "string" },
+        },
+        required: ["name", "points", "description"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["rubric"],
+  additionalProperties: false,
+};
+
 export async function onRequestPost({ request, env }) {
   try {
     const form = await request.formData();
@@ -49,13 +70,25 @@ Assignment title: ${title}
 Assignment description: ${description}
 Teacher sample AIA source: ${sampleSummary || "No sample uploaded."}
 
-Return only a JSON array with exactly these three objects:
-{"name":"功能介面需求","points":20,"description":"..."}
-{"name":"程式邏輯完成度","points":50,"description":"..."}
-{"name":"目標功能正確性","points":30,"description":"..."}
+Return exactly three rubric items in this order and with these exact names and points:
+1. 功能介面需求: 20 points
+2. 程式邏輯完成度: 50 points
+3. 目標功能正確性: 30 points
 
 Use Traditional Chinese. Keep each description under 120 Chinese characters and focus on observable functional evidence.`;
-  const rubric = await openaiJson(env, prompt, 800);
-  if (!Array.isArray(rubric)) throw new Error("AI 回傳的評分標準格式不正確");
-  return rubric;
+
+  const result = await openaiJson(env, prompt, {
+    name: "app_inventor_rubric",
+    schema: RUBRIC_SCHEMA,
+    maxOutputTokens: 1000,
+  });
+  const categories = [
+    { name: "功能介面需求", points: 20 },
+    { name: "程式邏輯完成度", points: 50 },
+    { name: "目標功能正確性", points: 30 },
+  ];
+  return categories.map((category, index) => ({
+    ...category,
+    description: String(result.rubric[index]?.description || "依專案功能完成度評分"),
+  }));
 }

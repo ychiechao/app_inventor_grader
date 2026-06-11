@@ -5,6 +5,18 @@ import { callAppsScript, openaiJson } from "../_shared/services.js";
 const MAX_APPS_SCRIPT_FILE_BYTES = 1_500_000;
 const MAX_SHEET_SUMMARY_CHARS = 12_000;
 
+const GRADE_SCHEMA = {
+  type: "object",
+  properties: {
+    interfaceScore: { type: "integer" },
+    logicScore: { type: "integer" },
+    correctnessScore: { type: "integer" },
+    feedback: { type: "string" },
+  },
+  required: ["interfaceScore", "logicScore", "correctnessScore", "feedback"],
+  additionalProperties: false,
+};
+
 export async function onRequestPost({ request, env }) {
   try {
     const form = await request.formData();
@@ -53,11 +65,15 @@ Assignment description: ${assignment.description}
 Rubric: ${JSON.stringify(assignment.rubric)}
 Extracted AIA source: ${aiaSummary}
 
-Return only JSON:
-{"interfaceScore":0,"logicScore":0,"correctnessScore":0,"totalScore":0,"feedback":"以繁體中文說明完成度、功能證據與待修正項目"}
+Score ranges: interfaceScore 0-20, logicScore 0-50, correctnessScore 0-30.
+Grade functionality and code completion. Do not deduct for beauty, naming, or typos unless they break functionality. Use .scm and .bky as evidence.
+Write feedback in Traditional Chinese. Explain completed features, missing or incorrect logic, and the evidence used. Keep feedback under 900 Chinese characters.`;
 
-Score ranges: interfaceScore 0-20, logicScore 0-50, correctnessScore 0-30. Grade functionality and code completion. Do not deduct for beauty, naming, or typos unless they break functionality. Use .scm and .bky as evidence.`;
-  const parsed = await openaiJson(env, prompt, 1600);
+  const parsed = await openaiJson(env, prompt, {
+    name: "app_inventor_grade",
+    schema: GRADE_SCHEMA,
+    maxOutputTokens: 2000,
+  });
   const interfaceScore = clamp(parsed.interfaceScore, 20);
   const logicScore = clamp(parsed.logicScore, 50);
   const correctnessScore = clamp(parsed.correctnessScore, 30);
