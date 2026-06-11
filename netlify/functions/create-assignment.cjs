@@ -23,11 +23,15 @@ exports.handler = async (event) => {
       rubric,
       sampleFile: sampleAia && sampleBuffer ? filePayloadFromBuffer(sampleAia, sampleBuffer) : null,
     });
+    const submissionUrl = new URL("/", event.rawUrl || `https://${event.headers.host}`);
+    submissionUrl.searchParams.set("assignment", scriptResult.assignmentId);
+    submissionUrl.hash = "student";
 
     return jsonResponse(200, {
       assignmentId: scriptResult.assignmentId,
       spreadsheetUrl: scriptResult.spreadsheetUrl,
       sampleFileUrl: scriptResult.sampleFileUrl,
+      submissionUrl: submissionUrl.toString(),
       rubric,
     });
   } catch (error) {

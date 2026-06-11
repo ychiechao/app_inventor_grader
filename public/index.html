@@ -12,7 +12,7 @@
         <div class="brand-mark" aria-hidden="true">✓</div>
         <div>
           <h1>App Inventor 作業評分助手</h1>
-          <p>建立作業、收件、初步評分與試算表紀錄</p>
+          <p>建立分享連結，讓學生先初評、確認後再正式繳交</p>
         </div>
       </section>
 
@@ -43,7 +43,7 @@
         <aside class="panel result-panel">
           <h2>建立結果</h2>
           <div id="teacher-result">
-            <p class="empty-state">建立完成後，這裡會出現作業代碼、試算表連結與 AI 評分規準。</p>
+            <p class="empty-state">建立完成後，這裡會出現可直接分享給學生的上傳連結。</p>
           </div>
         </aside>
       </section>
@@ -51,36 +51,50 @@
       <section class="workspace-grid hidden" id="student-panel">
         <form class="panel" id="student-form">
           <h2>學生端</h2>
-          <label>
+          <div class="assignment-context" id="assignment-context" hidden>
+            <span>已載入老師指定的作業</span>
+            <strong id="assignment-context-code"></strong>
+          </div>
+          <label id="assignment-id-field">
             作業代碼
             <input name="assignmentId" required placeholder="老師提供的作業代碼" />
           </label>
           <label>
-            電子郵件
-            <input name="email" type="email" required placeholder="student@example.com" />
-          </label>
-          <div class="two-columns">
-            <label>
-              班級
-              <input name="className" required placeholder="801" />
-            </label>
-            <label>
-              座號
-              <input name="seatNumber" required placeholder="12" />
-            </label>
-          </div>
-          <label>
             作業 .aia
             <input name="homeworkAia" type="file" accept=".aia" required />
           </label>
-          <button class="primary-action" type="submit">上傳並取得初評</button>
-          <p class="error-text" id="student-error"></p>
+          <p class="form-hint">初評只需要上傳檔案，不會留下正式繳交紀錄。</p>
+
+          <fieldset class="formal-fields">
+            <legend>正式繳交資料</legend>
+            <p>確認初評結果後再填寫，正式繳交時才是必填。</p>
+            <label>
+              電子郵件
+              <input name="email" type="email" placeholder="student@example.com" />
+            </label>
+            <div class="two-columns">
+              <label>
+                班級
+                <input name="className" placeholder="801" />
+              </label>
+              <label>
+                座號
+                <input name="seatNumber" placeholder="12" />
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="student-actions">
+            <button class="primary-action" type="submit" data-mode="preview" formnovalidate>取得 AI 初評</button>
+            <button class="secondary-action" type="submit" data-mode="final">正式繳交作業</button>
+          </div>
+          <p class="error-text" id="student-error" aria-live="polite"></p>
         </form>
 
         <aside class="panel result-panel">
           <h2>評分結果</h2>
           <div id="student-result">
-            <p class="empty-state">上傳後會看到 AI 初評與試算表紀錄連結。</p>
+            <p class="empty-state">先取得初評，結果會依三項評分標準分段顯示。</p>
           </div>
         </aside>
       </section>

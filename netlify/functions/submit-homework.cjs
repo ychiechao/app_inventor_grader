@@ -12,24 +12,33 @@ exports.handler = async (event) => {
     const email = String(parsed.fields.email || "").trim();
     const className = String(parsed.fields.className || "").trim();
     const seatNumber = String(parsed.fields.seatNumber || "").trim();
+    const submissionMode = parsed.fields.submissionMode === "final" ? "final" : "preview";
     const homeworkAia = parsed.files.homeworkAia;
 
-    if (!assignmentId || !email || !className || !seatNumber || !homeworkAia) {
-      return jsonResponse(400, { error: "請完整填寫學生資料並選擇 .aia 檔案" });
+    if (!assignmentId || !homeworkAia) {
+      return jsonResponse(400, { error: "請確認作業連結並上傳 .aia 檔案" });
+    }
+    if (submissionMode === "final" && (!email || !className || !seatNumber)) {
+      return jsonResponse(400, { error: "正式繳交請填寫電子郵件、班級與座號" });
     }
 
     const assignment = await callAppsScript({ action: "getAssignment", assignmentId });
     const homeworkBuffer = Buffer.from(await homeworkAia.arrayBuffer());
+    if (submissionMode === "final" && homeworkBuffer.length > MAX_APPS_SCRIPT_FILE_BYTES) {
+      return jsonResponse(413, {
+        error: "此檔案可進行初評，但超過正式繳交上限，請縮小專案中的圖片或音訊後再正式繳交。",
+      });
+    }
+
     const aiaSummary = summarizeAia(homeworkAia, homeworkBuffer);
-    const shouldUploadOriginalFile = homeworkBuffer.length <= MAX_APPS_SCRIPT_FILE_BYTES;
     const grade = await gradeHomework({
       assignmentDescription: assignment.description,
       rubric: assignment.rubric,
       aiaSummary,
     });
 
-    if (!shouldUploadOriginalFile) {
-      grade.feedback = `${grade.feedback}\n\n系統提醒：此 .aia 檔案較大，已完成評分與試算表紀錄，但為避免 Google Apps Script 逾時，本次未上傳原始檔到雲端硬碟。`;
+    if (submissionMode === "preview") {
+      return jsonResponse(200, { ...grade, submissionMode });
     }
 
     const saved = await callAppsScript({
@@ -41,14 +50,13 @@ exports.handler = async (event) => {
       assignmentDescription: assignment.description,
       aiaSummary: limit(aiaSummary, MAX_SHEET_SUMMARY_CHARS),
       grade,
-      homeworkFile: shouldUploadOriginalFile ? filePayloadFromBuffer(homeworkAia, homeworkBuffer) : null,
+      homeworkFile: filePayloadFromBuffer(homeworkAia, homeworkBuffer),
     });
 
     return jsonResponse(200, {
       ...grade,
-      spreadsheetUrl: saved.spreadsheetUrl,
-      fileUrl: saved.fileUrl,
-      uploadSkipped: !shouldUploadOriginalFile,
+      ...saved,
+      submissionMode,
     });
   } catch (error) {
     return errorResponse(error, "上傳作業失敗");
@@ -236,23 +244,38 @@ Return only one JSON object, no Markdown:
   "interfaceScore": integer from 0 to 20,
   "logicScore": integer from 0 to 50,
   "correctnessScore": integer from 0 to 30,
-  "totalScore": sum of the three scores,
-  "feedback": "Traditional Chinese feedback explaining what was detected in the UI/components, what was detected in the blocks, completion level, and improvement suggestions"
+  "interfaceFeedback": "Traditional Chinese feedback for 功能介面需求",
+  "logicFeedback": "Traditional Chinese feedback for 程式邏輯完成度",
+  "correctnessFeedback": "Traditional Chinese feedback for 目標功能正確性",
+  "overallFeedback": "short Traditional Chinese overall suggestion"
 }
 
-Use the .scm component definitions and .bky XML blocks as primary evidence. Mention concrete component names, variables, procedures, events, or missing checks when visible. Be conservative only when the extracted source is insufficient.`;
+Use the .scm component definitions and .bky XML blocks as primary evidence. In each category, mention concrete evidence, missing behavior, and one improvement when needed. Be conservative only when the extracted source is insufficient.`;
 
   const text = await openaiText(prompt);
   const parsed = extractJson(text);
   const interfaceScore = clampScore(parsed.interfaceScore, 20);
   const logicScore = clampScore(parsed.logicScore, 50);
   const correctnessScore = clampScore(parsed.correctnessScore, 30);
+  const interfaceFeedback = String(parsed.interfaceFeedback || "未提供功能介面需求說明");
+  const logicFeedback = String(parsed.logicFeedback || "未提供程式邏輯完成度說明");
+  const correctnessFeedback = String(parsed.correctnessFeedback || "未提供目標功能正確性說明");
+  const overallFeedback = String(parsed.overallFeedback || "已完成初步評分");
   return {
     interfaceScore,
     logicScore,
     correctnessScore,
     totalScore: interfaceScore + logicScore + correctnessScore,
-    feedback: String(parsed.feedback || "已完成初步評分。"),
+    interfaceFeedback,
+    logicFeedback,
+    correctnessFeedback,
+    overallFeedback,
+    feedback: [
+      `【功能介面需求】${interfaceFeedback}`,
+      `【程式邏輯完成度】${logicFeedback}`,
+      `【目標功能正確性】${correctnessFeedback}`,
+      `【整體建議】${overallFeedback}`,
+    ].join("\n\n"),
   };
 }
 

@@ -55,7 +55,11 @@ export async function onRequestPost({ request, env }) {
       sampleFile: sampleAia instanceof File && sampleBuffer ? filePayload(sampleAia, sampleBuffer) : null,
     });
 
-    return json({ ...result, rubric });
+    const submissionUrl = new URL("/", request.url);
+    submissionUrl.searchParams.set("assignment", result.assignmentId);
+    submissionUrl.hash = "student";
+
+    return json({ ...result, rubric, submissionUrl: submissionUrl.toString() });
   } catch (error) {
     return errorResponse(error, "建立作業失敗");
   }

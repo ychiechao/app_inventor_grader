@@ -9,6 +9,7 @@
     "cf:deploy": "wrangler pages deploy public --project-name app-inventor-grader",
     "build": "echo Static site ready",
     "preview": "netlify serve",
+    "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

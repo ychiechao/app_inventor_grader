@@ -91,33 +91,60 @@ function saveSubmission_(payload) {
   const spreadsheet = openSpreadsheet_(payload.assignmentId);
   const folder = DriveApp.getFolderById(ROOT_FOLDER_ID);
   const submissions = spreadsheet.getSheetByName("submissions");
+  const homeworkFile = payload.homeworkFile;
+  const className = String(payload.className || "").trim();
+  const seatNumber = String(payload.seatNumber || "").trim();
 
-  let fileUrl = "";
-  if (payload.homeworkFile && payload.homeworkFile.base64) {
-    const prefix = String(payload.className || "class") + "-" + String(payload.seatNumber || "seat") + "-" + Date.now() + "-";
-    const file = saveBase64File_(folder, payload.homeworkFile, prefix);
-    fileUrl = file.getUrl();
+  if (!homeworkFile || !homeworkFile.base64 || !className || !seatNumber) {
+    throw new Error("正式繳交資料不完整");
   }
 
-  submissions.appendRow([
-    new Date(),
-    payload.email || "",
-    payload.className || "",
-    payload.seatNumber || "",
-    fileUrl,
-    payload.grade.interfaceScore,
-    payload.grade.logicScore,
-    payload.grade.correctnessScore,
-    payload.grade.totalScore,
-    payload.grade.feedback,
-    payload.aiaSummary || "",
-    payload.assignmentDescription || "",
-  ]);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
 
-  return {
-    spreadsheetUrl: spreadsheet.getUrl(),
-    fileUrl: fileUrl,
-  };
+  try {
+    const submittedAt = new Date();
+    const datePart = Utilities.formatDate(submittedAt, "Asia/Taipei", "yyyyMMdd");
+    const originalBaseName = String(homeworkFile.name || "project.aia").replace(/\.aia$/i, "");
+    const fileName = [
+      safeFilePart_(originalBaseName, "project"),
+      datePart,
+      safeFilePart_(className, "class"),
+      safeFilePart_(seatNumber, "seat"),
+    ].join("_") + ".aia";
+    const existingRow = findSubmissionRow_(submissions, className, seatNumber);
+    const oldFileUrl = existingRow ? String(submissions.getRange(existingRow, 5).getDisplayValue() || "") : "";
+    const file = saveBase64FileAs_(folder, homeworkFile, fileName);
+    const row = existingRow || Math.max(2, submissions.getLastRow() + 1);
+    const values = [[
+      submittedAt,
+      payload.email || "",
+      className,
+      seatNumber,
+      file.getUrl(),
+      payload.grade.interfaceScore,
+      payload.grade.logicScore,
+      payload.grade.correctnessScore,
+      payload.grade.totalScore,
+      payload.grade.feedback,
+      payload.aiaSummary || "",
+      payload.assignmentDescription || "",
+    ]];
+
+    submissions.getRange(row, 2, 1, 3).setNumberFormat("@");
+    submissions.getRange(row, 1, 1, values[0].length).setValues(values);
+    if (oldFileUrl) trashFileFromUrl_(oldFileUrl, file.getId());
+
+    return {
+      spreadsheetUrl: spreadsheet.getUrl(),
+      fileUrl: file.getUrl(),
+      fileName: fileName,
+      replaced: Boolean(existingRow),
+      submittedAt: submittedAt.toISOString(),
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function openSpreadsheet_(assignmentIdOrUrl) {
@@ -149,13 +176,61 @@ function extractSpreadsheetId_(assignmentIdOrUrl) {
 }
 
 function saveBase64File_(folder, filePayload, prefix) {
+  return saveBase64FileAs_(folder, filePayload, prefix + (filePayload.name || "project.aia"));
+}
+
+function saveBase64FileAs_(folder, filePayload, fileName) {
   const bytes = Utilities.base64Decode(filePayload.base64);
   const blob = Utilities.newBlob(
     bytes,
     filePayload.mimeType || "application/octet-stream",
-    prefix + (filePayload.name || "project.aia")
+    fileName
   );
   return folder.createFile(blob);
+}
+
+function findSubmissionRow_(sheet, className, seatNumber) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  const values = sheet.getRange(2, 3, lastRow - 1, 2).getDisplayValues();
+  const expectedClass = comparableStudentValue_(className);
+  const expectedSeat = comparableStudentValue_(seatNumber);
+
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (
+      comparableStudentValue_(values[index][0]) === expectedClass &&
+      comparableStudentValue_(values[index][1]) === expectedSeat
+    ) {
+      return index + 2;
+    }
+  }
+  return 0;
+}
+
+function comparableStudentValue_(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return /^\d+$/.test(text) ? String(Number(text)) : text;
+}
+
+function safeFilePart_(value, fallback) {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/[\\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "-")
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
+function trashFileFromUrl_(fileUrl, replacementFileId) {
+  const match = String(fileUrl || "").match(/(?:\/d\/|[?&]id=)([a-zA-Z0-9_-]+)/);
+  if (!match || match[1] === replacementFileId) return;
+
+  try {
+    DriveApp.getFileById(match[1]).setTrashed(true);
+  } catch (error) {
+    console.warn("Unable to trash replaced submission file", error);
+  }
 }
 
 function json_(data) {
