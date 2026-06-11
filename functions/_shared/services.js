@@ -31,14 +31,7 @@ export async function openaiJson(env, prompt, options) {
       input: prompt,
       reasoning: { effort: "none" },
       max_output_tokens: maxOutputTokens,
-      text: {
-        format: {
-          type: "json_schema",
-          name,
-          strict: true,
-          schema,
-        },
-      },
+      text: { format: { type: "json_schema", name, strict: true, schema } },
     }),
   });
 
@@ -47,10 +40,8 @@ export async function openaiJson(env, prompt, options) {
   if (data.status === "incomplete") {
     throw new Error(`AI 評分未完成：${data.incomplete_details?.reason || "輸出長度不足"}`);
   }
-
   const refusal = collectRefusal(data);
   if (refusal) throw new Error(`AI 無法完成評分：${refusal}`);
-
   const output = data.output_text || collectOutputText(data);
   if (!output) throw new Error("AI 沒有回傳評分內容");
   try {
@@ -61,17 +52,9 @@ export async function openaiJson(env, prompt, options) {
 }
 
 function collectOutputText(data) {
-  return (data.output || [])
-    .flatMap((item) => item.content || [])
-    .filter((content) => content.type === "output_text")
-    .map((content) => content.text || "")
-    .join("");
+  return (data.output || []).flatMap((item) => item.content || []).filter((content) => content.type === "output_text").map((content) => content.text || "").join("");
 }
 
 function collectRefusal(data) {
-  return (data.output || [])
-    .flatMap((item) => item.content || [])
-    .filter((content) => content.type === "refusal")
-    .map((content) => content.refusal || "")
-    .join(" ");
+  return (data.output || []).flatMap((item) => item.content || []).filter((content) => content.type === "refusal").map((content) => content.refusal || "").join(" ");
 }

@@ -1,3 +1,4 @@
 OPENAI_API_KEY=your_openai_api_key
 APPS_SCRIPT_WEB_APP_URL=https://script.google.com/macros/s/your_deployment_id/exec
 APPS_SCRIPT_TOKEN=your_apps_script_token
+TEACHER_ACCESS_KEY=your_teacher_management_password

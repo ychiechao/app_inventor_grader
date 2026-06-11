@@ -2,103 +2,28 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>App Inventor 作業評分助手</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="超哥 App Inventor 學習幫手：作業發布、AI 初評與正式繳交。" />
+    <title>超哥 App Inventor 學習幫手</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <section class="topbar">
-        <div class="brand-mark" aria-hidden="true">✓</div>
-        <div>
-          <h1>App Inventor 作業評分助手</h1>
-          <p>建立分享連結，讓學生先初評、確認後再正式繳交</p>
-        </div>
-      </section>
-
-      <nav class="tabs" aria-label="頁面切換">
-        <button class="active" id="teacher-tab" type="button">老師建立作業</button>
-        <button id="student-tab" type="button">學生上傳作業</button>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="返回首頁">
+        <span class="brand-mark" aria-hidden="true">✓</span>
+        <span><strong>超哥 App Inventor 學習幫手</strong><small>作業發布、AI 初評與繳交管理</small></span>
+      </a>
+      <nav class="main-nav" aria-label="主要導覽">
+        <a href="/">作業列表</a>
+        <a href="/teacher">教師管理</a>
       </nav>
+    </header>
 
-      <section class="workspace-grid" id="teacher-panel">
-        <form class="panel" id="teacher-form">
-          <h2>老師端</h2>
-          <label>
-            作業名稱
-            <input name="title" required placeholder="例如：BMI 計算器" />
-          </label>
-          <label>
-            專案描述
-            <textarea name="description" required rows="7" placeholder="描述學生要完成的 App 功能、畫面與操作流程。"></textarea>
-          </label>
-          <label>
-            範例 .aia
-            <input name="sampleAia" type="file" accept=".aia" />
-          </label>
-          <button class="primary-action" type="submit">建立作業與評分規準</button>
-          <p class="error-text" id="teacher-error"></p>
-        </form>
-
-        <aside class="panel result-panel">
-          <h2>建立結果</h2>
-          <div id="teacher-result">
-            <p class="empty-state">建立完成後，這裡會出現可直接分享給學生的上傳連結。</p>
-          </div>
-        </aside>
-      </section>
-
-      <section class="workspace-grid hidden" id="student-panel">
-        <form class="panel" id="student-form">
-          <h2>學生端</h2>
-          <div class="assignment-context" id="assignment-context" hidden>
-            <span>已載入老師指定的作業</span>
-            <strong id="assignment-context-code"></strong>
-          </div>
-          <label id="assignment-id-field">
-            作業代碼
-            <input name="assignmentId" required placeholder="老師提供的作業代碼" />
-          </label>
-          <label>
-            作業 .aia
-            <input name="homeworkAia" type="file" accept=".aia" required />
-          </label>
-          <p class="form-hint">初評只需要上傳檔案，不會留下正式繳交紀錄。</p>
-
-          <fieldset class="formal-fields">
-            <legend>正式繳交資料</legend>
-            <p>確認初評結果後再填寫，正式繳交時才是必填。</p>
-            <label>
-              電子郵件
-              <input name="email" type="email" placeholder="student@example.com" />
-            </label>
-            <div class="two-columns">
-              <label>
-                班級
-                <input name="className" placeholder="801" />
-              </label>
-              <label>
-                座號
-                <input name="seatNumber" placeholder="12" />
-              </label>
-            </div>
-          </fieldset>
-
-          <div class="student-actions">
-            <button class="primary-action" type="submit" data-mode="preview" formnovalidate>取得 AI 初評</button>
-            <button class="secondary-action" type="submit" data-mode="final">正式繳交作業</button>
-          </div>
-          <p class="error-text" id="student-error" aria-live="polite"></p>
-        </form>
-
-        <aside class="panel result-panel">
-          <h2>評分結果</h2>
-          <div id="student-result">
-            <p class="empty-state">先取得初評，結果會依三項評分標準分段顯示。</p>
-          </div>
-        </aside>
-      </section>
+    <main id="app" class="page-shell" aria-live="polite">
+      <p class="loading-state">正在載入...</p>
     </main>
+
+    <footer class="site-footer">超哥 App Inventor 學習幫手</footer>
     <script src="/app.js"></script>
   </body>
 </html>

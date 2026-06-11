@@ -39,21 +39,19 @@ export async function onRequestPost({ request, env }) {
     const homeworkAia = form.get("homeworkAia");
 
     if (!assignmentId || !(homeworkAia instanceof File) || homeworkAia.size === 0) {
-      return json({ error: "請確認作業連結並上傳 .aia 檔案" }, 400);
+      return json({ error: "請確認作業連結並選擇 .aia 檔案" }, 400);
     }
     if (submissionMode === "final" && (!email || !className || !seatNumber)) {
       return json({ error: "正式繳交請填寫電子郵件、班級與座號" }, 400);
     }
 
     const assignment = await callAppsScript(env, { action: "getAssignment", assignmentId });
+    if (!assignment.canSubmit) {
+      return json({ error: assignment.status === "scheduled" ? "作業尚未開放繳交" : "作業已停止繳交" }, 403);
+    }
     const buffer = await homeworkAia.arrayBuffer();
     if (submissionMode === "final" && buffer.byteLength > MAX_APPS_SCRIPT_FILE_BYTES) {
-      return json(
-        {
-          error: "此檔案可進行初評，但超過正式繳交上限，請縮小專案中的圖片或音訊後再正式繳交。",
-        },
-        413,
-      );
+      return json({ error: "檔案較大，可以先使用 AI 初評，但目前無法正式儲存到 Google Drive" }, 413);
     }
 
     const aiaSummary = summarizeAia(homeworkAia, buffer);
@@ -101,10 +99,10 @@ Write all feedback in Traditional Chinese. Return separate feedback for the thre
   const interfaceScore = clamp(parsed.interfaceScore, 20);
   const logicScore = clamp(parsed.logicScore, 50);
   const correctnessScore = clamp(parsed.correctnessScore, 30);
-  const interfaceFeedback = String(parsed.interfaceFeedback || "未提供功能介面需求說明");
-  const logicFeedback = String(parsed.logicFeedback || "未提供程式邏輯完成度說明");
-  const correctnessFeedback = String(parsed.correctnessFeedback || "未提供目標功能正確性說明");
-  const overallFeedback = String(parsed.overallFeedback || "已完成初步評分");
+  const interfaceFeedback = String(parsed.interfaceFeedback || "未提供功能介面評語");
+  const logicFeedback = String(parsed.logicFeedback || "未提供程式邏輯評語");
+  const correctnessFeedback = String(parsed.correctnessFeedback || "未提供目標正確性評語");
+  const overallFeedback = String(parsed.overallFeedback || "未提供整體評語");
   return {
     interfaceScore,
     logicScore,
@@ -115,10 +113,10 @@ Write all feedback in Traditional Chinese. Return separate feedback for the thre
     correctnessFeedback,
     overallFeedback,
     feedback: [
-      `【功能介面需求】${interfaceFeedback}`,
-      `【程式邏輯完成度】${logicFeedback}`,
-      `【目標功能正確性】${correctnessFeedback}`,
-      `【整體建議】${overallFeedback}`,
+      `功能介面需求：${interfaceFeedback}`,
+      `程式邏輯完成度：${logicFeedback}`,
+      `目標功能正確性：${correctnessFeedback}`,
+      `整體評語：${overallFeedback}`,
     ].join("\n\n"),
   };
 }

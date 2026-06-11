@@ -1,5 +1,5 @@
 import { filePayload, summarizeAia } from "../_shared/aia.js";
-import { errorResponse, json } from "../_shared/http.js";
+import { errorResponse, json, requireTeacher } from "../_shared/http.js";
 import { callAppsScript, openaiJson } from "../_shared/services.js";
 
 const RUBRIC_SCHEMA = {
@@ -24,6 +24,8 @@ const RUBRIC_SCHEMA = {
 };
 
 export async function onRequestPost({ request, env }) {
+  const denied = requireTeacher(request, env);
+  if (denied) return denied;
   try {
     const form = await request.formData();
     const title = String(form.get("title") || "").trim();
@@ -53,11 +55,13 @@ export async function onRequestPost({ request, env }) {
       description,
       rubric,
       sampleFile: sampleAia instanceof File && sampleBuffer ? filePayload(sampleAia, sampleBuffer) : null,
+      baseStatus: String(form.get("baseStatus") || "draft"),
+      openAt: String(form.get("openAt") || ""),
+      closeAt: String(form.get("closeAt") || ""),
     });
 
-    const submissionUrl = new URL("/", request.url);
-    submissionUrl.searchParams.set("assignment", result.assignmentId);
-    submissionUrl.hash = "student";
+    const submissionUrl = new URL("/submit", request.url);
+    submissionUrl.searchParams.set("id", result.assignmentId);
 
     return json({ ...result, rubric, submissionUrl: submissionUrl.toString() });
   } catch (error) {
@@ -74,7 +78,7 @@ Assignment title: ${title}
 Assignment description: ${description}
 Teacher sample AIA source: ${sampleSummary || "No sample uploaded."}
 
-Return exactly three rubric items in this order and with these exact names and points:
+Return exactly three rubric items in this order:
 1. 功能介面需求: 20 points
 2. 程式邏輯完成度: 50 points
 3. 目標功能正確性: 30 points
