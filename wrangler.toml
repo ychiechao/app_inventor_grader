@@ -1,0 +1,7 @@
+name = "app-inventor-grader"
+pages_build_output_dir = "public"
+compatibility_date = "2026-06-11"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+OPENAI_MODEL = "gpt-5.1"

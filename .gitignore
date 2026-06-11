@@ -1,0 +1,9 @@
+node_modules
+dist
+.netlify
+.env
+.env.local
+.npm-cache
+.appdata
+.dev.vars
+.wrangler
