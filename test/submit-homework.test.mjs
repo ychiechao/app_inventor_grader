@@ -5,6 +5,7 @@ import { onRequestGet as listAssignments } from "../functions/api/assignments.js
 import { onRequestPost as createAssignment } from "../functions/api/create-assignment.js";
 import { onRequestGet as getAssignment } from "../functions/api/get-assignment.js";
 import { onRequestPost as submitHomework } from "../functions/api/submit-homework.js";
+import { onRequestPost as teacherAction } from "../functions/api/teacher.js";
 
 const env = {
   APPS_SCRIPT_WEB_APP_URL: "https://example.test/apps-script",
@@ -84,6 +85,26 @@ test("preview does not save and closed assignments reject submissions", async ()
     const closed = await submit({ submissionMode: "preview" });
     assert.equal(closed.status, 403);
     assert.deepEqual(actions, ["getAssignment"]);
+  });
+});
+
+test("teacher can delete an assignment", async () => {
+  await withMockFetch(async (input, init = {}) => {
+    const payload = JSON.parse(init.body);
+    assert.equal(payload.action, "deleteAssignment");
+    assert.equal(payload.assignmentId, "abc123def456");
+    return jsonResponse({ ok: true, data: { deleted: true, assignmentId: payload.assignmentId } });
+  }, async () => {
+    const response = await teacherAction({
+      request: teacherRequest("https://example.test/api/teacher", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", id: "abc123def456" }),
+      }),
+      env,
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { deleted: true, assignmentId: "abc123def456" });
   });
 });
 

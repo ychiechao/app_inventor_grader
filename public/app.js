@@ -220,13 +220,36 @@ async function loadTeacherAssignments() {
     tbody.innerHTML = items.length ? items.map(teacherAssignmentRow).join("") : '<tr><td colspan="6">尚未建立作業。</td></tr>';
     tbody.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openAssignmentDialog(items.find((item) => item.id === button.dataset.edit))));
     tbody.querySelectorAll("[data-copy]").forEach((button) => button.addEventListener("click", async () => { await copyText(submissionUrl(button.dataset.copy)); button.textContent = "已複製"; }));
+    tbody.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteAssignment(items.find((item) => item.id === button.dataset.delete), button)));
   } catch (error) {
     document.querySelector("#teacher-assignment-list").innerHTML = `<tr><td colspan="6"><span class="form-error">${escapeHtml(error.message)}</span></td></tr>`;
   }
 }
 
 function teacherAssignmentRow(item) {
-  return `<tr><td><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description)}</small></td><td><span class="status ${escapeAttribute(item.status)}">${statusLabel(item.status)}</span></td><td>${formatDateTime(item.openAt)}</td><td>${formatDateTime(item.closeAt)}</td><td>${escapeHtml(item.submissionCount || 0)}</td><td><div class="row-actions"><a class="icon-button" href="/teacher/assignment?id=${encodeURIComponent(item.id)}" title="查看繳交" aria-label="查看繳交">›</a><button class="icon-button" data-copy="${escapeAttribute(item.id)}" type="button" title="複製學生連結" aria-label="複製學生連結">⧉</button><button class="icon-button" data-edit="${escapeAttribute(item.id)}" type="button" title="編輯作業" aria-label="編輯作業">✎</button></div></td></tr>`;
+  return `<tr><td><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description)}</small></td><td><span class="status ${escapeAttribute(item.status)}">${statusLabel(item.status)}</span></td><td>${formatDateTime(item.openAt)}</td><td>${formatDateTime(item.closeAt)}</td><td>${escapeHtml(item.submissionCount || 0)}</td><td><div class="row-actions"><a class="icon-button" href="/teacher/assignment?id=${encodeURIComponent(item.id)}" title="查看繳交" aria-label="查看繳交">›</a><button class="icon-button" data-copy="${escapeAttribute(item.id)}" type="button" title="複製學生連結" aria-label="複製學生連結">⧉</button><button class="icon-button" data-edit="${escapeAttribute(item.id)}" type="button" title="編輯作業" aria-label="編輯作業">✎</button><button class="icon-button danger-icon-button" data-delete="${escapeAttribute(item.id)}" type="button" title="刪除作業" aria-label="刪除作業">⌫</button></div></td></tr>`;
+}
+
+async function deleteAssignment(item, button) {
+  if (!item) return;
+  const submissionNote = Number(item.submissionCount || 0) > 0 ? `\n目前有 ${item.submissionCount} 筆學生繳交紀錄。` : "";
+  const confirmed = window.confirm(`確定刪除「${item.title}」嗎？${submissionNote}\n\n評分試算表、範例檔與學生作業檔都會移到 Google 雲端硬碟垃圾桶。`);
+  if (!confirmed) return;
+  button.disabled = true;
+  try {
+    const response = await teacherFetch("/api/teacher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id: item.id }),
+    });
+    const data = await readJsonResponse(response);
+    if (response.status === 401) return teacherLogout();
+    if (!response.ok) throw new Error(data.error || "刪除作業失敗");
+    await loadTeacherAssignments();
+  } catch (error) {
+    window.alert(error.message);
+    button.disabled = false;
+  }
 }
 
 function openAssignmentDialog(item = null) {

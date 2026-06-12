@@ -133,6 +133,9 @@ textarea { resize: vertical; }
 .management-table tbody tr:hover { background: #fafcf9; }
 .row-actions { display: flex; justify-content: flex-end; gap: 5px; }
 .row-actions .icon-button { width: 34px; min-height: 34px; font-size: 1rem; }
+.danger-icon-button { color: #b42318; }
+.danger-icon-button:hover { border-color: #d92d20; color: #8f1d14; background: #fff1f0; }
+.danger-icon-button:disabled { cursor: wait; opacity: 0.45; }
 
 dialog { width: min(620px, calc(100vw - 28px)); max-height: calc(100vh - 40px); border: 0; border-radius: 8px; padding: 0; box-shadow: 0 24px 70px rgb(15 23 42 / 0.24); }
 dialog::backdrop { background: rgb(15 23 42 / 0.42); }

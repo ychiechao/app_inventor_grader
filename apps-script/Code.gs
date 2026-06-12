@@ -18,6 +18,7 @@ function doPost(e) {
       listAdminAssignments: listAdminAssignments_,
       getAssignmentAdmin: getAssignmentAdmin_,
       updateAssignment: updateAssignment_,
+      deleteAssignment: deleteAssignment_,
       saveSubmission: saveSubmission_,
     };
     const handler = actions[payload.action];
@@ -144,6 +145,41 @@ function updateAssignment_(payload) {
   if (rubricSheet && rubricSheet.getLastColumn() >= 4) rubricSheet.getRange(2, 4).setValue(title);
 
   return publicAssignment_(record);
+}
+
+function deleteAssignment_(payload) {
+  const id = String(payload.assignmentId || "").trim();
+  const registry = getRegistry_();
+  const sheet = registry.getSheets()[0];
+  const found = findRegistryRow_(sheet, id);
+  if (!found) throw new Error("Assignment not found");
+
+  const record = registryRowToRecord_(sheet.getRange(found.row, 1, 1, REGISTRY_HEADERS.length).getValues()[0]);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    trashAssignmentFiles_(record);
+    sheet.deleteRow(found.row);
+    return { deleted: true, assignmentId: id };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function trashAssignmentFiles_(record) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(record.spreadsheetId);
+    const submissions = spreadsheet.getSheetByName("submissions");
+    if (submissions && submissions.getLastRow() >= 2) {
+      submissions.getRange(2, 5, submissions.getLastRow() - 1, 1).getDisplayValues().forEach(function (row) {
+        trashFileFromUrl_(row[0], "");
+      });
+    }
+  } catch (error) {
+    console.warn("Unable to inspect assignment submissions before deletion", error);
+  }
+  trashFileFromUrl_(record.sampleFileUrl, "");
+  trashFileById_(record.spreadsheetId);
 }
 
 function saveSubmission_(payload) {
@@ -348,4 +384,5 @@ function findSubmissionRow_(sheet, className, seatNumber) { const lastRow = shee
 function comparableStudentValue_(value) { const text = String(value || "").trim().toLowerCase(); return /^\d+$/.test(text) ? String(Number(text)) : text; }
 function safeFilePart_(value, fallback) { const cleaned = String(value || "").trim().replace(/[\\\/:*?"<>|]/g, "-").replace(/\s+/g, "-").slice(0, 80); return cleaned || fallback; }
 function trashFileFromUrl_(url, replacementId) { const match = String(url || "").match(/(?:\/d\/|[?&]id=)([a-zA-Z0-9_-]+)/); if (!match || match[1] === replacementId) return; try { DriveApp.getFileById(match[1]).setTrashed(true); } catch (error) { console.warn("Unable to trash replaced file", error); } }
+function trashFileById_(fileId) { if (!fileId) return; try { DriveApp.getFileById(fileId).setTrashed(true); } catch (error) { console.warn("Unable to trash assignment file", error); } }
 function json_(data) { return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON); }

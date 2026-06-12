@@ -24,6 +24,13 @@ export async function onRequestPost({ request, env }) {
   if (denied) return denied;
   try {
     const payload = await request.json();
+    if (payload.action === "delete") {
+      const result = await callAppsScript(env, {
+        action: "deleteAssignment",
+        assignmentId: payload.id,
+      });
+      return json(result);
+    }
     if (payload.action !== "update") return json({ error: "不支援的管理操作" }, 400);
     const assignment = await callAppsScript(env, {
       action: "updateAssignment",
