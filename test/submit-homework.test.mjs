@@ -6,6 +6,7 @@ import { onRequestPost as createAssignment } from "../functions/api/create-assig
 import { onRequestGet as getAssignment } from "../functions/api/get-assignment.js";
 import { onRequestPost as submitHomework } from "../functions/api/submit-homework.js";
 import { onRequestPost as teacherAction } from "../functions/api/teacher.js";
+import { onRequestPost as checkSubmission } from "../functions/api/check-submission.js";
 
 const env = {
   APPS_SCRIPT_WEB_APP_URL: "https://example.test/apps-script",
@@ -66,6 +67,7 @@ test("preview does not save and closed assignments reject submissions", async ()
       const payload = JSON.parse(init.body);
       actions.push(payload.action);
       if (payload.action === "getAssignment") return jsonResponse({ ok: true, data: { title: "測試", description: "完成指定功能", rubric: [], status: assignmentOpen ? "open" : "closed", canSubmit: assignmentOpen } });
+      if (payload.action === "checkSubmission") return jsonResponse({ ok: true, data: { exists: false } });
       if (payload.action === "saveSubmission") return jsonResponse({ ok: true, data: { fileName: "student_20260611_801_12.aia", replaced: true } });
     }
     if (String(input) === "https://api.openai.com/v1/responses") return jsonResponse({ status: "completed", output_text: JSON.stringify(grade()) });
@@ -78,13 +80,72 @@ test("preview does not save and closed assignments reject submissions", async ()
     actions.length = 0;
     const final = await submit({ submissionMode: "final", email: "student@example.com", className: "801", seatNumber: "12" });
     assert.equal(final.status, 200);
-    assert.deepEqual(actions, ["getAssignment", "saveSubmission"]);
+    assert.deepEqual(actions, ["getAssignment", "checkSubmission", "saveSubmission"]);
 
     actions.length = 0;
     assignmentOpen = false;
     const closed = await submit({ submissionMode: "preview" });
     assert.equal(closed.status, 403);
     assert.deepEqual(actions, ["getAssignment"]);
+  });
+});
+
+test("submission check finds an existing email", async () => {
+  await withMockFetch(async (input, init = {}) => {
+    const payload = JSON.parse(init.body);
+    assert.equal(payload.action, "checkSubmission");
+    assert.equal(payload.email, "student@example.com");
+    return jsonResponse({ ok: true, data: { exists: true, className: "801", seatNumber: "12" } });
+  }, async () => {
+    const response = await checkSubmission({
+      request: new Request("https://example.test/api/check-submission", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignmentId: "abc123def456", email: "STUDENT@example.com" }),
+      }),
+      env,
+    });
+    assert.deepEqual(await response.json(), { exists: true, className: "801", seatNumber: "12" });
+  });
+});
+
+test("duplicate final submission requires overwrite confirmation before grading", async () => {
+  const actions = [];
+  await withMockFetch(async (input, init = {}) => {
+    if (String(input) !== env.APPS_SCRIPT_WEB_APP_URL) throw new Error("OpenAI should not be called");
+    const payload = JSON.parse(init.body);
+    actions.push(payload.action);
+    if (payload.action === "getAssignment") return jsonResponse({ ok: true, data: { title: "測試", description: "完成指定功能", rubric: [], status: "open", canSubmit: true } });
+    if (payload.action === "checkSubmission") return jsonResponse({ ok: true, data: { exists: true } });
+    throw new Error("Unexpected action");
+  }, async () => {
+    const response = await submit({ submissionMode: "final", email: "student@example.com", className: "801", seatNumber: "12" });
+    assert.equal(response.status, 409);
+    assert.equal(response.data.duplicate, true);
+    assert.deepEqual(actions, ["getAssignment", "checkSubmission"]);
+  });
+});
+
+test("confirmed duplicate replaces the existing email submission", async () => {
+  const actions = [];
+  await withMockFetch(async (input, init = {}) => {
+    if (String(input) === env.APPS_SCRIPT_WEB_APP_URL) {
+      const payload = JSON.parse(init.body);
+      actions.push(payload.action);
+      if (payload.action === "getAssignment") return jsonResponse({ ok: true, data: { title: "測試", description: "完成指定功能", rubric: [], status: "open", canSubmit: true } });
+      if (payload.action === "checkSubmission") return jsonResponse({ ok: true, data: { exists: true } });
+      if (payload.action === "saveSubmission") {
+        assert.equal(payload.overwriteConfirmed, true);
+        return jsonResponse({ ok: true, data: { fileName: "student_20260612_801_12.aia", replaced: true } });
+      }
+    }
+    if (String(input) === "https://api.openai.com/v1/responses") return jsonResponse({ status: "completed", output_text: JSON.stringify(grade()) });
+    throw new Error(`Unexpected fetch: ${input}`);
+  }, async () => {
+    const response = await submit({ submissionMode: "final", email: "student@example.com", className: "801", seatNumber: "12", overwriteConfirmed: true });
+    assert.equal(response.status, 200);
+    assert.equal(response.data.replaced, true);
+    assert.deepEqual(actions, ["getAssignment", "checkSubmission", "saveSubmission"]);
   });
 });
 
@@ -122,6 +183,7 @@ async function submit(fields) {
   if (fields.email) form.set("email", fields.email);
   if (fields.className) form.set("className", fields.className);
   if (fields.seatNumber) form.set("seatNumber", fields.seatNumber);
+  if (fields.overwriteConfirmed) form.set("overwriteConfirmed", "true");
   const response = await submitHomework({ request: new Request("https://example.test/api/submit-homework", { method: "POST", body: form }), env });
   return { status: response.status, data: await response.json() };
 }

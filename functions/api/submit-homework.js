@@ -36,6 +36,7 @@ export async function onRequestPost({ request, env }) {
     const className = String(form.get("className") || "").trim();
     const seatNumber = String(form.get("seatNumber") || "").trim();
     const submissionMode = form.get("submissionMode") === "final" ? "final" : "preview";
+    const overwriteConfirmed = form.get("overwriteConfirmed") === "true";
     const homeworkAia = form.get("homeworkAia");
 
     if (!assignmentId || !(homeworkAia instanceof File) || homeworkAia.size === 0) {
@@ -48,6 +49,12 @@ export async function onRequestPost({ request, env }) {
     const assignment = await callAppsScript(env, { action: "getAssignment", assignmentId });
     if (!assignment.canSubmit) {
       return json({ error: assignment.status === "scheduled" ? "作業尚未開放繳交" : "作業已停止繳交" }, 403);
+    }
+    if (submissionMode === "final") {
+      const existing = await callAppsScript(env, { action: "checkSubmission", assignmentId, email });
+      if (existing.exists && !overwriteConfirmed) {
+        return json({ error: "此電子郵件已繳交過，請確認是否覆蓋", duplicate: true, existing }, 409);
+      }
     }
     const buffer = await homeworkAia.arrayBuffer();
     if (submissionMode === "final" && buffer.byteLength > MAX_APPS_SCRIPT_FILE_BYTES) {
@@ -68,6 +75,7 @@ export async function onRequestPost({ request, env }) {
       email,
       className,
       seatNumber,
+      overwriteConfirmed,
       assignmentDescription: assignment.description,
       aiaSummary: limit(aiaSummary, MAX_SHEET_SUMMARY_CHARS),
       grade,

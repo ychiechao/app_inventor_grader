@@ -86,7 +86,7 @@ async function renderSubmissionPage() {
           <legend>正式繳交資料</legend>
           <label>電子郵件<input name="email" type="email" placeholder="student@example.com" /></label>
           <div class="field-row"><label>班級<input name="className" placeholder="801" /></label><label>座號<input name="seatNumber" placeholder="12" /></label></div>
-          <p>同班級、同座號重新繳交時，會取代先前檔案並更新評分。</p>
+          <p>相同電子郵件重新繳交時，系統會先詢問是否覆蓋原作業。</p>
         </fieldset>
         <button class="primary-button full-width" id="student-submit" type="submit">取得 AI 初評</button>
         <p class="form-error" id="student-error"></p>
@@ -140,10 +140,30 @@ async function submitStudent(event) {
     if (!valid) return (errorElement.textContent = "正式繳交請填寫電子郵件、班級與座號。 ");
   }
 
-  resultElement.innerHTML = `<p class="loading-state">${mode === "final" ? "正在評分並正式繳交..." : "正在進行 AI 初評..."}</p>`;
   setFormBusy(form, true);
   try {
-    const response = await fetch("/api/submit-homework", { method: "POST", body: new FormData(form) });
+    const formData = new FormData(form);
+    if (mode === "final") {
+      resultElement.innerHTML = '<p class="loading-state">正在確認繳交紀錄...</p>';
+      const checkResponse = await fetch("/api/check-submission", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignmentId: form.elements.assignmentId.value, email: form.elements.email.value }),
+      });
+      const checkData = await readJsonResponse(checkResponse);
+      if (!checkResponse.ok) throw new Error(checkData.error || "檢查繳交紀錄失敗");
+      if (checkData.exists) {
+        const previous = [checkData.className, checkData.seatNumber ? `${checkData.seatNumber} 號` : ""].filter(Boolean).join(" ");
+        const confirmed = window.confirm(`此電子郵件已繳交過${previous ? `（${previous}）` : ""}。\n\n是否以這次作業與最新評分覆蓋原紀錄？`);
+        if (!confirmed) {
+          resultElement.innerHTML = '<div class="empty-result">已取消覆蓋，原作業與評分資料保持不變。</div>';
+          return;
+        }
+        formData.set("overwriteConfirmed", "true");
+      }
+    }
+    resultElement.innerHTML = `<p class="loading-state">${mode === "final" ? "正在評分並正式繳交..." : "正在進行 AI 初評..."}</p>`;
+    const response = await fetch("/api/submit-homework", { method: "POST", body: formData });
     const data = await readJsonResponse(response);
     if (!response.ok) throw new Error(data.error || "評分失敗");
     renderGradeResult(resultElement, data);
