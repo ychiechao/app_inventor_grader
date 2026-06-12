@@ -136,6 +136,19 @@ textarea { resize: vertical; }
 .danger-icon-button { color: #b42318; }
 .danger-icon-button:hover { border-color: #d92d20; color: #8f1d14; background: #fff1f0; }
 .danger-icon-button:disabled { cursor: wait; opacity: 0.45; }
+.batch-panel { margin-bottom: 24px; padding: 20px; border: 1px solid #d8ded5; background: #fff; }
+.batch-heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+.batch-heading h2, .section-heading h2 { font-size: 1.15rem; }
+.batch-heading p { margin-top: 6px; color: #66707e; line-height: 1.5; }
+.batch-form { display: grid; grid-template-columns: minmax(280px, 1fr) auto auto; align-items: end; gap: 10px; }
+.batch-summary { margin: 14px 0 10px; color: #53606d; font-weight: 700; }
+.batch-files-wrap { max-height: 360px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; margin: 25px 0 10px; }
+.batch-status { display: inline-flex; min-width: 74px; justify-content: center; padding: 4px 8px; color: #46515e; background: #e9ede8; font-size: 0.78rem; font-weight: 850; }
+.batch-status.pending, .batch-status.updated { color: #72510b; background: #fff1c7; }
+.batch-status.completed, .batch-status.unchanged { color: #0b5b3c; background: #dff4e8; }
+.batch-status.invalid, .batch-status.oversized, .batch-status.duplicate, .batch-status.failed { color: #8f1d14; background: #fde8e6; }
+.batch-status.grading { color: #1f4b75; background: #e4f0fb; }
 
 dialog { width: min(620px, calc(100vw - 28px)); max-height: calc(100vh - 40px); border: 0; border-radius: 8px; padding: 0; box-shadow: 0 24px 70px rgb(15 23 42 / 0.24); }
 dialog::backdrop { background: rgb(15 23 42 / 0.42); }
@@ -156,5 +169,7 @@ dialog::backdrop { background: rgb(15 23 42 / 0.42); }
   .assignment-card, .two-panel-layout, .mode-control, .field-row { grid-template-columns: 1fr; }
   .assignment-card-action .primary-button, .assignment-card-action .disabled-button { width: 100%; }
   .teacher-stats { grid-template-columns: 1fr; }
+  .batch-heading { display: grid; }
+  .batch-form { grid-template-columns: 1fr; }
   .panel { padding: 18px; }
 }

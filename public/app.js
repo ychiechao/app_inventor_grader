@@ -1,5 +1,7 @@
 const app = document.querySelector("#app");
 const TEACHER_KEY_STORAGE = "app-inventor-teacher-key";
+let batchFiles = [];
+let batchRunning = false;
 
 route();
 window.addEventListener("popstate", route);
@@ -324,8 +326,22 @@ async function renderTeacherAssignment() {
   if (!key) return renderTeacherLogin("請先登入後查看作業。");
   const id = new URLSearchParams(window.location.search).get("id")?.trim();
   setPageTitle("作業繳交管理");
-  app.innerHTML = `<section class="page-heading"><div><a class="back-link" href="/teacher">← 返回教師管理</a><h1 id="detail-title">作業繳交管理</h1><p id="detail-description"></p></div><button class="secondary-button" id="detail-copy" type="button">複製學生連結</button></section><section class="teacher-stats" id="detail-stats"></section><section class="management-table-wrap"><table class="management-table submissions-table"><thead><tr><th>班級</th><th>座號</th><th>電子郵件</th><th>繳交時間</th><th>介面</th><th>邏輯</th><th>正確性</th><th>總分</th><th>檔案</th></tr></thead><tbody id="submission-list"><tr><td colspan="9">正在讀取...</td></tr></tbody></table></section>`;
+  app.innerHTML = `
+    <section class="page-heading"><div><a class="back-link" href="/teacher">← 返回教師管理</a><h1 id="detail-title">作業繳交管理</h1><p id="detail-description"></p></div><button class="secondary-button" id="detail-copy" type="button">複製學生連結</button></section>
+    <section class="teacher-stats" id="detail-stats"></section>
+    <section class="batch-panel">
+      <div class="batch-heading"><div><h2>Google Drive 批次評分</h2><p>檔名格式：<strong>班級_座號_姓名.aia</strong>，例如 <strong>819_09_王小明.aia</strong></p></div><a id="batch-sheet-link" href="#" target="_blank" rel="noreferrer" hidden>開啟批次評分紀錄</a></div>
+      <form id="batch-form" class="batch-form"><label>Google Drive 資料夾網址<input name="folderUrl" type="url" placeholder="https://drive.google.com/drive/folders/..." required /></label><button class="secondary-button" type="submit">掃描資料夾</button><button class="primary-button" id="batch-start" type="button" disabled>開始批次評分</button></form>
+      <div id="batch-summary" class="batch-summary">尚未掃描資料夾。</div>
+      <div class="management-table-wrap batch-files-wrap"><table class="management-table"><thead><tr><th>班級</th><th>座號</th><th>姓名</th><th>檔名</th><th>狀態</th><th>結果</th></tr></thead><tbody id="batch-file-list"><tr><td colspan="6">請先貼入資料夾網址。</td></tr></tbody></table></div>
+    </section>
+    <section class="section-heading"><h2>學生線上繳交</h2></section>
+    <section class="management-table-wrap"><table class="management-table submissions-table"><thead><tr><th>班級</th><th>座號</th><th>電子郵件</th><th>繳交時間</th><th>介面</th><th>邏輯</th><th>正確性</th><th>總分</th><th>檔案</th></tr></thead><tbody id="submission-list"><tr><td colspan="9">正在讀取...</td></tr></tbody></table></section>
+    <section class="section-heading"><h2>批次評分紀錄</h2></section>
+    <section class="management-table-wrap"><table class="management-table"><thead><tr><th>班級</th><th>座號</th><th>姓名</th><th>評分時間</th><th>介面</th><th>邏輯</th><th>正確性</th><th>總分</th><th>檔案</th></tr></thead><tbody id="batch-record-list"><tr><td colspan="9">正在讀取...</td></tr></tbody></table></section>`;
   document.querySelector("#detail-copy").addEventListener("click", async (event) => { await copyText(submissionUrl(id)); event.currentTarget.textContent = "已複製"; });
+  document.querySelector("#batch-form").addEventListener("submit", (event) => scanBatchFolder(event, id));
+  document.querySelector("#batch-start").addEventListener("click", () => startBatchGrading(id));
   try {
     const response = await teacherFetch(`/api/teacher?action=detail&id=${encodeURIComponent(id || "")}`);
     const data = await readJsonResponse(response);
@@ -335,9 +351,96 @@ async function renderTeacherAssignment() {
     document.querySelector("#detail-description").textContent = data.assignment.description;
     document.querySelector("#detail-stats").innerHTML = statBlock("繳交人數", data.submissions.length) + statBlock("平均分數", average(data.submissions.map((x) => x.totalScore))) + statBlock("作業狀態", statusLabel(data.assignment.status));
     document.querySelector("#submission-list").innerHTML = data.submissions.length ? data.submissions.map(submissionRow).join("") : '<tr><td colspan="9">尚無學生正式繳交。</td></tr>';
+    document.querySelector("#batch-record-list").innerHTML = data.batchGrades?.length ? data.batchGrades.map(batchRecordRow).join("") : '<tr><td colspan="9">尚無批次評分紀錄。</td></tr>';
   } catch (error) {
     document.querySelector("#submission-list").innerHTML = `<tr><td colspan="9"><span class="form-error">${escapeHtml(error.message)}</span></td></tr>`;
   }
+}
+
+async function scanBatchFolder(event, assignmentId) {
+  event.preventDefault();
+  if (batchRunning) return;
+  const form = event.currentTarget;
+  const summary = document.querySelector("#batch-summary");
+  summary.textContent = "正在讀取 Google Drive 資料夾...";
+  setFormBusy(form, true);
+  try {
+    const response = await teacherFetch("/api/batch-grading", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "scan", assignmentId, folderUrl: form.elements.folderUrl.value }) });
+    const data = await readJsonResponse(response);
+    if (response.status === 401) return teacherLogout();
+    if (!response.ok) throw new Error(data.error || "掃描資料夾失敗");
+    batchFiles = data.files || [];
+    renderBatchFiles();
+    const actionable = batchFiles.filter((item) => ["pending", "updated"].includes(item.status)).length;
+    summary.textContent = `「${data.folderName}」共找到 ${batchFiles.length} 個 .aia，可評分 ${actionable} 個。`;
+    document.querySelector("#batch-start").disabled = actionable === 0;
+    const link = document.querySelector("#batch-sheet-link");
+    link.href = data.recordSheetUrl;
+    link.hidden = false;
+  } catch (error) {
+    summary.textContent = error.message;
+    batchFiles = [];
+    renderBatchFiles();
+  } finally {
+    setFormBusy(form, false);
+    document.querySelector("#batch-start").disabled = batchFiles.filter((item) => ["pending", "updated"].includes(item.status)).length === 0;
+  }
+}
+
+async function startBatchGrading(assignmentId) {
+  if (batchRunning) return;
+  const queue = batchFiles.filter((item) => ["pending", "updated"].includes(item.status));
+  if (!queue.length) return;
+  batchRunning = true;
+  const startButton = document.querySelector("#batch-start");
+  const summary = document.querySelector("#batch-summary");
+  startButton.disabled = true;
+  let completed = 0;
+  let failed = 0;
+  for (const item of queue) {
+    item.status = "grading";
+    renderBatchFiles();
+    summary.textContent = `正在評分 ${completed + failed + 1} / ${queue.length}：${item.name}`;
+    try {
+      const response = await teacherFetch("/api/batch-grading", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "grade", assignmentId, fileId: item.fileId }) });
+      const data = await readJsonResponse(response);
+      if (!response.ok) throw new Error(data.error || "評分失敗");
+      item.status = data.skipped ? "unchanged" : "completed";
+      item.result = data.skipped ? "檔案未更新" : `${data.totalScore} 分`;
+      completed += 1;
+    } catch (error) {
+      item.status = "failed";
+      item.result = error.message;
+      failed += 1;
+    }
+    renderBatchFiles();
+  }
+  batchRunning = false;
+  summary.textContent = `批次評分完成：成功 ${completed}，失敗 ${failed}。`;
+  startButton.disabled = true;
+  await refreshBatchRecords(assignmentId);
+}
+
+function renderBatchFiles() {
+  const tbody = document.querySelector("#batch-file-list");
+  if (!tbody) return;
+  tbody.innerHTML = batchFiles.length ? batchFiles.map((item) => `<tr><td>${escapeHtml(item.className || "-")}</td><td>${escapeHtml(item.seatNumber || "-")}</td><td>${escapeHtml(item.studentName || "-")}</td><td><a href="${escapeAttribute(item.fileUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.name)}</a></td><td><span class="batch-status ${escapeAttribute(item.status)}">${batchStatusLabel(item.status)}</span></td><td>${escapeHtml(item.result || item.error || "-")}</td></tr>`).join("") : '<tr><td colspan="6">沒有可顯示的 .aia 檔案。</td></tr>';
+}
+
+async function refreshBatchRecords(assignmentId) {
+  try {
+    const response = await teacherFetch(`/api/teacher?action=detail&id=${encodeURIComponent(assignmentId)}`);
+    const data = await readJsonResponse(response);
+    if (response.ok) document.querySelector("#batch-record-list").innerHTML = data.batchGrades?.length ? data.batchGrades.map(batchRecordRow).join("") : '<tr><td colspan="9">尚無批次評分紀錄。</td></tr>';
+  } catch { /* Keep the completed progress visible. */ }
+}
+
+function batchRecordRow(item) {
+  return `<tr><td>${escapeHtml(item.className)}</td><td>${escapeHtml(item.seatNumber)}</td><td>${escapeHtml(item.studentName)}</td><td>${escapeHtml(item.gradedAt)}</td><td>${escapeHtml(item.interfaceScore)}/20</td><td>${escapeHtml(item.logicScore)}/50</td><td>${escapeHtml(item.correctnessScore)}/30</td><td><strong>${escapeHtml(item.totalScore)}</strong></td><td>${item.fileUrl ? `<a href="${escapeAttribute(item.fileUrl)}" target="_blank" rel="noreferrer">開啟</a>` : "-"}</td></tr>`;
+}
+
+function batchStatusLabel(status) {
+  return ({ pending: "待評分", updated: "檔案已更新", unchanged: "已是最新", invalid: "檔名錯誤", oversized: "檔案過大", duplicate: "重複檔案", grading: "評分中", completed: "完成", failed: "失敗" })[status] || status;
 }
 
 function submissionRow(item) {

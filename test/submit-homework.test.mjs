@@ -7,6 +7,7 @@ import { onRequestGet as getAssignment } from "../functions/api/get-assignment.j
 import { onRequestPost as submitHomework } from "../functions/api/submit-homework.js";
 import { onRequestPost as teacherAction } from "../functions/api/teacher.js";
 import { onRequestPost as checkSubmission } from "../functions/api/check-submission.js";
+import { onRequestPost as batchGrading } from "../functions/api/batch-grading.js";
 
 const env = {
   APPS_SCRIPT_WEB_APP_URL: "https://example.test/apps-script",
@@ -166,6 +167,83 @@ test("teacher can delete an assignment", async () => {
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { deleted: true, assignmentId: "abc123def456" });
+  });
+});
+
+test("teacher can scan a Drive folder for batch grading", async () => {
+  await withMockFetch(async (input, init = {}) => {
+    const payload = JSON.parse(init.body);
+    assert.equal(payload.action, "listBatchFiles");
+    assert.equal(payload.folderUrl, "https://drive.google.com/drive/folders/folder123456789012345");
+    return jsonResponse({ ok: true, data: { folderName: "819 作業", files: [{ fileId: "file1", name: "819_09_王小明.aia", status: "pending" }] } });
+  }, async () => {
+    const response = await batchGrading({
+      request: teacherRequest("https://example.test/api/batch-grading", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "scan", assignmentId: "abc123def456", folderUrl: "https://drive.google.com/drive/folders/folder123456789012345" }),
+      }),
+      env,
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).files[0].name, "819_09_王小明.aia");
+  });
+});
+
+test("batch grading skips an unchanged Drive file before calling OpenAI", async () => {
+  const actions = [];
+  await withMockFetch(async (input, init = {}) => {
+    if (String(input) !== env.APPS_SCRIPT_WEB_APP_URL) throw new Error("OpenAI should not be called");
+    const payload = JSON.parse(init.body);
+    actions.push(payload.action);
+    if (payload.action === "getAssignment") return jsonResponse({ ok: true, data: { title: "測試", description: "完成指定功能", rubric: [] } });
+    if (payload.action === "getBatchFile") return jsonResponse({ ok: true, data: { unchanged: true, record: { totalScore: 88 } } });
+    throw new Error("Unexpected action");
+  }, async () => {
+    const response = await batchGrading({
+      request: teacherRequest("https://example.test/api/batch-grading", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "grade", assignmentId: "abc123def456", fileId: "file1" }),
+      }),
+      env,
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).skipped, true);
+    assert.deepEqual(actions, ["getAssignment", "getBatchFile"]);
+  });
+});
+
+test("batch grading saves scores for a valid Drive AIA file", async () => {
+  const actions = [];
+  await withMockFetch(async (input, init = {}) => {
+    if (String(input) === env.APPS_SCRIPT_WEB_APP_URL) {
+      const payload = JSON.parse(init.body);
+      actions.push(payload.action);
+      if (payload.action === "getAssignment") return jsonResponse({ ok: true, data: { title: "測試", description: "完成指定功能", rubric: rubric() } });
+      if (payload.action === "getBatchFile") return jsonResponse({ ok: true, data: { unchanged: false, fileId: "file1", name: "819_09_王小明.aia", fileUrl: "https://drive.test/file1", updatedAt: "2026-06-12T00:00:00.000Z", className: "819", seatNumber: "09", studentName: "王小明", base64: createStoredZip().toString("base64") } });
+      if (payload.action === "saveBatchGrade") {
+        assert.equal(payload.source.className, "819");
+        assert.equal(payload.source.seatNumber, "09");
+        assert.equal(payload.grade.totalScore, 86);
+        return jsonResponse({ ok: true, data: { replaced: false, recordSheetUrl: "https://example.test/sheet#gid=2" } });
+      }
+    }
+    if (String(input) === "https://api.openai.com/v1/responses") return jsonResponse({ status: "completed", output_text: JSON.stringify(grade()) });
+    throw new Error(`Unexpected fetch: ${input}`);
+  }, async () => {
+    const response = await batchGrading({
+      request: teacherRequest("https://example.test/api/batch-grading", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "grade", assignmentId: "abc123def456", fileId: "file1" }),
+      }),
+      env,
+    });
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(data.totalScore, 86);
+    assert.deepEqual(actions, ["getAssignment", "getBatchFile", "saveBatchGrade"]);
   });
 });
 

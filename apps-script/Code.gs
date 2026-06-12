@@ -1,6 +1,7 @@
 const SCRIPT_TOKEN = PropertiesService.getScriptProperties().getProperty("APPS_SCRIPT_TOKEN");
 const ROOT_FOLDER_ID = "1zBnc5cX_oVeuw1KDti3uGMX4Cpy9mdB6";
 const REGISTRY_PROPERTY = "ASSIGNMENT_REGISTRY_SPREADSHEET_ID";
+const MAX_BATCH_FILE_BYTES = 1500000;
 const REGISTRY_HEADERS = [
   "Public ID", "Title", "Description", "Base Status", "Open At", "Close At",
   "Spreadsheet ID", "Spreadsheet URL", "Sample URL", "Rubric JSON", "Created At", "Updated At",
@@ -20,6 +21,9 @@ function doPost(e) {
       updateAssignment: updateAssignment_,
       deleteAssignment: deleteAssignment_,
       checkSubmission: checkSubmission_,
+      listBatchFiles: listBatchFiles_,
+      getBatchFile: getBatchFile_,
+      saveBatchGrade: saveBatchGrade_,
       saveSubmission: saveSubmission_,
     };
     const handler = actions[payload.action];
@@ -114,7 +118,7 @@ function getAssignmentAdmin_(payload) {
   const assignment = publicAssignment_(resolved.record);
   assignment.spreadsheetUrl = resolved.record.spreadsheetUrl;
   assignment.sampleFileUrl = resolved.record.sampleFileUrl;
-  return { assignment: assignment, submissions: readSubmissions_(resolved.spreadsheet) };
+  return { assignment: assignment, submissions: readSubmissions_(resolved.spreadsheet), batchGrades: readBatchGrades_(resolved.spreadsheet) };
 }
 
 function updateAssignment_(payload) {
@@ -196,6 +200,149 @@ function checkSubmission_(payload) {
     seatNumber: values[3] || "",
   };
 }
+
+function listBatchFiles_(payload) {
+  const resolved = resolveAssignment_(payload.assignmentId);
+  const folderId = extractFolderId_(payload.folderUrl);
+  if (!folderId) throw new Error("無法辨識 Google Drive 資料夾網址");
+  const folder = DriveApp.getFolderById(folderId);
+  const existing = batchGradeMap_(resolved.spreadsheet);
+  const files = folder.getFiles();
+  const items = [];
+  const newestByStudent = {};
+
+  while (files.hasNext()) {
+    const file = files.next();
+    if (!/\.aia$/i.test(file.getName())) continue;
+    const identity = parseBatchFileName_(file.getName());
+    const updatedAt = file.getLastUpdated().toISOString();
+    const item = {
+      fileId: file.getId(),
+      name: file.getName(),
+      fileUrl: file.getUrl(),
+      size: file.getSize(),
+      updatedAt: updatedAt,
+      valid: identity.valid,
+      className: identity.className,
+      seatNumber: identity.seatNumber,
+      studentName: identity.studentName,
+      error: identity.error,
+      status: identity.valid ? "pending" : "invalid",
+    };
+    if (identity.valid && item.size > MAX_BATCH_FILE_BYTES) {
+      item.status = "oversized";
+      item.error = "檔案超過 1.5 MB，請改用學生繳交頁個別處理";
+    }
+    if (identity.valid && item.status !== "oversized") {
+      const key = batchStudentKey_(identity.className, identity.seatNumber);
+      const record = existing[key];
+      if (record && record.fileId === file.getId() && record.updatedAt === updatedAt) item.status = "unchanged";
+      else if (record) item.status = "updated";
+      const previous = newestByStudent[key];
+      if (!previous || previous.updatedAt < updatedAt) newestByStudent[key] = item;
+    }
+    items.push(item);
+  }
+
+  items.forEach(function (item) {
+    if (!item.valid) return;
+    const key = batchStudentKey_(item.className, item.seatNumber);
+    if (newestByStudent[key] !== item) {
+      item.status = "duplicate";
+      item.error = "同一班級座號有多個檔案，僅處理修改時間最新者";
+    }
+  });
+  items.sort(function (left, right) {
+    return String(left.className).localeCompare(String(right.className), "zh-Hant", { numeric: true }) || String(left.seatNumber).localeCompare(String(right.seatNumber), "zh-Hant", { numeric: true }) || String(left.name).localeCompare(String(right.name));
+  });
+  return { folderId: folderId, folderName: folder.getName(), files: items, recordSheetUrl: resolved.spreadsheet.getUrl() + "#gid=" + getBatchSheet_(resolved.spreadsheet).getSheetId() };
+}
+
+function getBatchFile_(payload) {
+  const resolved = resolveAssignment_(payload.assignmentId);
+  const file = DriveApp.getFileById(String(payload.fileId || ""));
+  if (file.getSize() > MAX_BATCH_FILE_BYTES) throw new Error("檔案超過 1.5 MB，無法進行批次評分");
+  const identity = parseBatchFileName_(file.getName());
+  if (!identity.valid) throw new Error(identity.error);
+  const updatedAt = file.getLastUpdated().toISOString();
+  const existing = batchGradeMap_(resolved.spreadsheet)[batchStudentKey_(identity.className, identity.seatNumber)];
+  if (existing && existing.fileId === file.getId() && existing.updatedAt === updatedAt) return { unchanged: true, record: existing };
+  const blob = file.getBlob();
+  return {
+    unchanged: false,
+    fileId: file.getId(),
+    name: file.getName(),
+    fileUrl: file.getUrl(),
+    updatedAt: updatedAt,
+    className: identity.className,
+    seatNumber: identity.seatNumber,
+    studentName: identity.studentName,
+    base64: Utilities.base64Encode(blob.getBytes()),
+  };
+}
+
+function saveBatchGrade_(payload) {
+  const resolved = resolveAssignment_(payload.assignmentId);
+  const source = payload.source || {};
+  const sheet = getBatchSheet_(resolved.spreadsheet);
+  const existingRow = findBatchGradeRow_(sheet, source.className, source.seatNumber);
+  const row = existingRow || Math.max(2, sheet.getLastRow() + 1);
+  const grade = payload.grade || {};
+  const values = [[
+    new Date(), source.className || "", source.seatNumber || "", source.studentName || "", source.fileId || "", source.fileName || "", source.fileUrl || "", source.updatedAt || "",
+    grade.interfaceScore || 0, grade.logicScore || 0, grade.correctnessScore || 0, grade.totalScore || 0, grade.feedback || "", payload.aiaSummary || "", "completed",
+  ]];
+  sheet.getRange(row, 2, 1, 3).setNumberFormat("@");
+  sheet.getRange(row, 1, 1, values[0].length).setValues(values);
+  return { replaced: Boolean(existingRow), className: source.className, seatNumber: source.seatNumber, studentName: source.studentName, recordSheetUrl: resolved.spreadsheet.getUrl() + "#gid=" + sheet.getSheetId() };
+}
+
+function getBatchSheet_(spreadsheet) {
+  let sheet = spreadsheet.getSheetByName("batch_grading");
+  if (sheet) return sheet;
+  sheet = spreadsheet.insertSheet("batch_grading");
+  sheet.getRange(1, 1, 1, 15).setValues([[
+    "Graded At", "Class", "Seat Number", "Student Name", "Source File ID", "Source File Name", "Source File URL", "Source Updated At",
+    "Interface Score", "Logic Score", "Correctness Score", "Total Score", "AI Feedback", "AIA Summary", "Status",
+  ]]);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function readBatchGrades_(spreadsheet) {
+  const sheet = spreadsheet.getSheetByName("batch_grading");
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 15).getDisplayValues().map(function (row) {
+    return { gradedAt: row[0], className: row[1], seatNumber: row[2], studentName: row[3], fileId: row[4], fileName: row[5], fileUrl: row[6], updatedAt: row[7], interfaceScore: Number(row[8] || 0), logicScore: Number(row[9] || 0), correctnessScore: Number(row[10] || 0), totalScore: Number(row[11] || 0), feedback: row[12], status: row[14] };
+  });
+}
+
+function batchGradeMap_(spreadsheet) {
+  const map = {};
+  readBatchGrades_(spreadsheet).forEach(function (record) { map[batchStudentKey_(record.className, record.seatNumber)] = record; });
+  return map;
+}
+
+function findBatchGradeRow_(sheet, className, seatNumber) {
+  if (sheet.getLastRow() < 2) return 0;
+  const values = sheet.getRange(2, 2, sheet.getLastRow() - 1, 2).getDisplayValues();
+  const key = batchStudentKey_(className, seatNumber);
+  for (let index = values.length - 1; index >= 0; index -= 1) if (batchStudentKey_(values[index][0], values[index][1]) === key) return index + 2;
+  return 0;
+}
+
+function parseBatchFileName_(name) {
+  const base = String(name || "").replace(/\.aia$/i, "");
+  const match = base.match(/^([^_]+)_([^_]+)_(.+)$/);
+  if (!match) return { valid: false, className: "", seatNumber: "", studentName: "", error: "檔名格式應為：班級_座號_姓名.aia" };
+  const className = match[1].trim();
+  const seatNumber = match[2].trim();
+  const studentName = match[3].trim();
+  if (!className || !/^\d+$/.test(seatNumber) || !studentName) return { valid: false, className: className, seatNumber: seatNumber, studentName: studentName, error: "班級、數字座號或姓名格式不正確" };
+  return { valid: true, className: className, seatNumber: seatNumber, studentName: studentName, error: "" };
+}
+
+function batchStudentKey_(className, seatNumber) { return String(className || "").trim().toLowerCase() + "|" + comparableStudentValue_(seatNumber); }
 
 function saveSubmission_(payload) {
   const resolved = resolveAssignment_(payload.assignmentId);
@@ -394,6 +541,7 @@ function validDateOrNull_(value) { if (!value) return null; const date = value i
 function isoDate_(value) { const date = validDateOrNull_(value); return date ? date.toISOString() : ""; }
 function moveFileToFolder_(fileId, folder) { const file = DriveApp.getFileById(fileId); folder.addFile(file); DriveApp.getRootFolder().removeFile(file); }
 function extractSpreadsheetId_(value) { const text = String(value || "").trim(); const url = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/); if (url) return url[1]; const plain = text.match(/[a-zA-Z0-9_-]{20,}/); return plain ? plain[0] : ""; }
+function extractFolderId_(value) { const text = String(value || "").trim(); const url = text.match(/\/folders\/([a-zA-Z0-9_-]+)/); if (url) return url[1]; const plain = text.match(/^[a-zA-Z0-9_-]{20,}$/); return plain ? plain[0] : ""; }
 function saveBase64File_(folder, payload, prefix) { return saveBase64FileAs_(folder, payload, prefix + (payload.name || "project.aia")); }
 function saveBase64FileAs_(folder, payload, name) { return folder.createFile(Utilities.newBlob(Utilities.base64Decode(payload.base64), payload.mimeType || "application/octet-stream", name)); }
 function findSubmissionRow_(sheet, className, seatNumber) { const lastRow = sheet.getLastRow(); if (lastRow < 2) return 0; const values = sheet.getRange(2, 3, lastRow - 1, 2).getDisplayValues(); const expectedClass = comparableStudentValue_(className); const expectedSeat = comparableStudentValue_(seatNumber); for (let index = values.length - 1; index >= 0; index -= 1) if (comparableStudentValue_(values[index][0]) === expectedClass && comparableStudentValue_(values[index][1]) === expectedSeat) return index + 2; return 0; }
