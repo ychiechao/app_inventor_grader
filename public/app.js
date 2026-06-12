@@ -157,6 +157,7 @@ async function submitStudent(event) {
 
 function renderGradeResult(container, data) {
   const isFinal = data.submissionMode === "final";
+  container.classList.remove("empty-result");
   container.innerHTML = `
     <div class="submission-result ${isFinal ? "final" : "preview"}"><strong>${isFinal ? (data.replaced ? "重新繳交完成" : "正式繳交完成") : "AI 初評完成"}</strong><span>${isFinal ? "作業與分數已寫入老師的紀錄。" : "本次初評不會儲存個人資料與檔案。"}</span></div>
     <div class="total-score"><span>總分</span><strong>${escapeHtml(data.totalScore)}<small>/100</small></strong></div>

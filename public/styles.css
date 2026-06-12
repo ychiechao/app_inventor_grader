@@ -107,13 +107,13 @@ textarea { resize: vertical; }
 .total-score strong { display: flex; align-items: baseline; gap: 3px; color: #17443e; font-size: 2rem; }
 .total-score small { color: #697481; font-size: 0.85rem; }
 .grade-sections { display: grid; gap: 11px; margin-top: 14px; }
-.grade-section { padding: 15px; border: 1px solid #d8ded5; border-radius: 7px; }
+.grade-section { padding: 15px; border: 1px solid #d8ded5; border-radius: 7px; text-align: left; }
 .grade-section header { display: flex; justify-content: space-between; gap: 14px; }
 .grade-section header span { flex: 0 0 auto; color: #116d61; font-weight: 900; }
 .grade-section p, .overall-feedback p { margin-top: 9px; color: #53606e; line-height: 1.65; white-space: pre-line; }
 .score-bar { height: 6px; margin-top: 11px; overflow: hidden; background: #e2e8e0; }
 .score-bar i { display: block; height: 100%; background: #116d61; }
-.overall-feedback { margin-top: 13px; padding: 15px; background: #f0f4ef; }
+.overall-feedback { margin-top: 13px; padding: 15px; background: #f0f4ef; text-align: left; }
 .saved-name { margin-top: 13px; color: #55616f; overflow-wrap: anywhere; }
 
 .login-panel { width: min(430px, 100%); margin: 8vh auto 0; padding: 28px; border: 1px solid #d8ded5; border-radius: 8px; background: #fff; box-shadow: 0 14px 34px rgb(31 41 55 / 0.07); }
