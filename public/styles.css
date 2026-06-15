@@ -149,6 +149,14 @@ textarea { resize: vertical; }
 .batch-status.completed, .batch-status.unchanged { color: #0b5b3c; background: #dff4e8; }
 .batch-status.invalid, .batch-status.oversized, .batch-status.duplicate, .batch-status.failed { color: #8f1d14; background: #fde8e6; }
 .batch-status.grading { color: #1f4b75; background: #e4f0fb; }
+.feedback-toggle { border: 0; padding: 4px 0; color: #12665c; background: transparent; font: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap; }
+.feedback-toggle:hover { color: #0b4f47; }
+.feedback-toggle:focus-visible { outline: 2px solid rgb(17 109 97 / 0.35); outline-offset: 3px; }
+.batch-feedback-row td { padding: 0; background: #f7faf7; }
+.batch-feedback-row:hover { background: #f7faf7 !important; }
+.batch-feedback-text { padding: 16px 20px; border-left: 4px solid #116d61; text-align: left; }
+.batch-feedback-text strong { color: #26323d; }
+.batch-feedback-text p { margin-top: 8px; color: #53606e; line-height: 1.7; white-space: pre-line; }
 
 dialog { width: min(620px, calc(100vw - 28px)); max-height: calc(100vh - 40px); border: 0; border-radius: 8px; padding: 0; box-shadow: 0 24px 70px rgb(15 23 42 / 0.24); }
 dialog::backdrop { background: rgb(15 23 42 / 0.42); }

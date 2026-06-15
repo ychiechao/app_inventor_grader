@@ -338,10 +338,11 @@ async function renderTeacherAssignment() {
     <section class="section-heading"><h2>學生線上繳交</h2></section>
     <section class="management-table-wrap"><table class="management-table submissions-table"><thead><tr><th>班級</th><th>座號</th><th>電子郵件</th><th>繳交時間</th><th>介面</th><th>邏輯</th><th>正確性</th><th>總分</th><th>檔案</th></tr></thead><tbody id="submission-list"><tr><td colspan="9">正在讀取...</td></tr></tbody></table></section>
     <section class="section-heading"><h2>批次評分紀錄</h2></section>
-    <section class="management-table-wrap"><table class="management-table"><thead><tr><th>班級</th><th>座號</th><th>姓名</th><th>評分時間</th><th>介面</th><th>邏輯</th><th>正確性</th><th>總分</th><th>檔案</th></tr></thead><tbody id="batch-record-list"><tr><td colspan="9">正在讀取...</td></tr></tbody></table></section>`;
+    <section class="management-table-wrap"><table class="management-table"><thead><tr><th>班級</th><th>座號</th><th>姓名</th><th>評分時間</th><th>介面</th><th>邏輯</th><th>正確性</th><th>總分</th><th>評語</th><th>檔案</th></tr></thead><tbody id="batch-record-list"><tr><td colspan="10">正在讀取...</td></tr></tbody></table></section>`;
   document.querySelector("#detail-copy").addEventListener("click", async (event) => { await copyText(submissionUrl(id)); event.currentTarget.textContent = "已複製"; });
   document.querySelector("#batch-form").addEventListener("submit", (event) => scanBatchFolder(event, id));
   document.querySelector("#batch-start").addEventListener("click", () => startBatchGrading(id));
+  document.querySelector("#batch-record-list").addEventListener("click", toggleBatchFeedback);
   try {
     const response = await teacherFetch(`/api/teacher?action=detail&id=${encodeURIComponent(id || "")}`);
     const data = await readJsonResponse(response);
@@ -351,7 +352,7 @@ async function renderTeacherAssignment() {
     document.querySelector("#detail-description").textContent = data.assignment.description;
     document.querySelector("#detail-stats").innerHTML = statBlock("繳交人數", data.submissions.length) + statBlock("平均分數", average(data.submissions.map((x) => x.totalScore))) + statBlock("作業狀態", statusLabel(data.assignment.status));
     document.querySelector("#submission-list").innerHTML = data.submissions.length ? data.submissions.map(submissionRow).join("") : '<tr><td colspan="9">尚無學生正式繳交。</td></tr>';
-    document.querySelector("#batch-record-list").innerHTML = data.batchGrades?.length ? data.batchGrades.map(batchRecordRow).join("") : '<tr><td colspan="9">尚無批次評分紀錄。</td></tr>';
+    renderBatchRecords(data.batchGrades);
   } catch (error) {
     document.querySelector("#submission-list").innerHTML = `<tr><td colspan="9"><span class="form-error">${escapeHtml(error.message)}</span></td></tr>`;
   }
@@ -431,12 +432,29 @@ async function refreshBatchRecords(assignmentId) {
   try {
     const response = await teacherFetch(`/api/teacher?action=detail&id=${encodeURIComponent(assignmentId)}`);
     const data = await readJsonResponse(response);
-    if (response.ok) document.querySelector("#batch-record-list").innerHTML = data.batchGrades?.length ? data.batchGrades.map(batchRecordRow).join("") : '<tr><td colspan="9">尚無批次評分紀錄。</td></tr>';
+    if (response.ok) renderBatchRecords(data.batchGrades);
   } catch { /* Keep the completed progress visible. */ }
 }
 
-function batchRecordRow(item) {
-  return `<tr><td>${escapeHtml(item.className)}</td><td>${escapeHtml(item.seatNumber)}</td><td>${escapeHtml(item.studentName)}</td><td>${escapeHtml(item.gradedAt)}</td><td>${escapeHtml(item.interfaceScore)}/20</td><td>${escapeHtml(item.logicScore)}/50</td><td>${escapeHtml(item.correctnessScore)}/30</td><td><strong>${escapeHtml(item.totalScore)}</strong></td><td>${item.fileUrl ? `<a href="${escapeAttribute(item.fileUrl)}" target="_blank" rel="noreferrer">開啟</a>` : "-"}</td></tr>`;
+function renderBatchRecords(records = []) {
+  const tbody = document.querySelector("#batch-record-list");
+  if (!tbody) return;
+  tbody.innerHTML = records.length ? records.map(batchRecordRows).join("") : '<tr><td colspan="10">尚無批次評分紀錄。</td></tr>';
+}
+
+function batchRecordRows(item, index) {
+  const feedbackId = `batch-feedback-${index}`;
+  return `<tr><td>${escapeHtml(item.className)}</td><td>${escapeHtml(item.seatNumber)}</td><td>${escapeHtml(item.studentName)}</td><td>${escapeHtml(item.gradedAt)}</td><td>${escapeHtml(item.interfaceScore)}/20</td><td>${escapeHtml(item.logicScore)}/50</td><td>${escapeHtml(item.correctnessScore)}/30</td><td><strong>${escapeHtml(item.totalScore)}</strong></td><td><button class="feedback-toggle" type="button" data-feedback-target="${feedbackId}" aria-controls="${feedbackId}" aria-expanded="false">查看評語</button></td><td>${item.fileUrl ? `<a href="${escapeAttribute(item.fileUrl)}" target="_blank" rel="noreferrer">開啟</a>` : "-"}</td></tr><tr class="batch-feedback-row" id="${feedbackId}" hidden><td colspan="10"><div class="batch-feedback-text"><strong>${escapeHtml(item.className)} 班 ${escapeHtml(item.seatNumber)} 號 ${escapeHtml(item.studentName)}</strong><p>${escapeHtml(item.feedback || "尚無評語")}</p></div></td></tr>`;
+}
+
+function toggleBatchFeedback(event) {
+  const button = event.target.closest("[data-feedback-target]");
+  if (!button) return;
+  const row = document.getElementById(button.dataset.feedbackTarget);
+  if (!row) return;
+  row.hidden = !row.hidden;
+  button.setAttribute("aria-expanded", String(!row.hidden));
+  button.textContent = row.hidden ? "查看評語" : "收合評語";
 }
 
 function batchStatusLabel(status) {
