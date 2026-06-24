@@ -1,21 +1,32 @@
 import { requireEnv } from "./http.js";
 
-export async function callAppsScript(env, payload) {
-  const response = await fetch(requireEnv(env, "APPS_SCRIPT_WEB_APP_URL"), {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ ...payload, token: requireEnv(env, "APPS_SCRIPT_TOKEN") }),
-    redirect: "follow",
-  });
-  const text = await response.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`Apps Script 回傳的不是 JSON：${text.slice(0, 300)}`);
+export async function callAppsScript(env, payload, options = {}) {
+  const attempts = Math.max(1, Number(options.attempts || 1));
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(requireEnv(env, "APPS_SCRIPT_WEB_APP_URL"), {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ ...payload, token: requireEnv(env, "APPS_SCRIPT_TOKEN") }),
+        redirect: "follow",
+      });
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        const isHtml = /<!doctype html|<html/i.test(text);
+        throw new Error(isHtml ? "Google Apps Script 暫時無法完成檔案處理" : `Apps Script 回傳格式錯誤：${text.slice(0, 180)}`);
+      }
+      if (!data.ok) throw new Error(data.error || "Apps Script 執行失敗");
+      return data.data;
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 700 * attempt));
+    }
   }
-  if (!data.ok) throw new Error(data.error || "Apps Script 執行失敗");
-  return data.data;
+  throw lastError;
 }
 
 export async function openaiJson(env, prompt, options) {

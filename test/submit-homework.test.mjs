@@ -197,7 +197,7 @@ test("batch grading skips an unchanged Drive file before calling OpenAI", async 
     const payload = JSON.parse(init.body);
     actions.push(payload.action);
     if (payload.action === "getAssignment") return jsonResponse({ ok: true, data: { title: "測試", description: "完成指定功能", rubric: [] } });
-    if (payload.action === "getBatchFile") return jsonResponse({ ok: true, data: { unchanged: true, record: { totalScore: 88 } } });
+    if (payload.action === "getBatchFileSummary") return jsonResponse({ ok: true, data: { unchanged: true, record: { totalScore: 88 } } });
     throw new Error("Unexpected action");
   }, async () => {
     const response = await batchGrading({
@@ -210,7 +210,7 @@ test("batch grading skips an unchanged Drive file before calling OpenAI", async 
     });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).skipped, true);
-    assert.deepEqual(actions, ["getAssignment", "getBatchFile"]);
+    assert.deepEqual(actions, ["getAssignment", "getBatchFileSummary"]);
   });
 });
 
@@ -221,7 +221,7 @@ test("batch grading saves scores for a valid Drive AIA file", async () => {
       const payload = JSON.parse(init.body);
       actions.push(payload.action);
       if (payload.action === "getAssignment") return jsonResponse({ ok: true, data: { title: "測試", description: "完成指定功能", rubric: rubric() } });
-      if (payload.action === "getBatchFile") return jsonResponse({ ok: true, data: { unchanged: false, fileId: "file1", name: "819_09_王小明.aia", fileUrl: "https://drive.test/file1", updatedAt: "2026-06-12T00:00:00.000Z", className: "819", seatNumber: "09", studentName: "王小明", base64: createStoredZip().toString("base64") } });
+      if (payload.action === "getBatchFileSummary") return jsonResponse({ ok: true, data: { unchanged: false, fileId: "file1", name: "819_09_王小明.aia", fileUrl: "https://drive.test/file1", updatedAt: "2026-06-12T00:00:00.000Z", className: "819", seatNumber: "09", studentName: "王小明", aiaSummary: "AIA file name: 819_09_王小明.aia\nBlocks source (.bky XML):\n<xml><block type=\"component_event\"></block></xml>" } });
       if (payload.action === "saveBatchGrade") {
         assert.equal(payload.source.className, "819");
         assert.equal(payload.source.seatNumber, "09");
@@ -243,7 +243,35 @@ test("batch grading saves scores for a valid Drive AIA file", async () => {
     const data = await response.json();
     assert.equal(response.status, 200);
     assert.equal(data.totalScore, 86);
-    assert.deepEqual(actions, ["getAssignment", "getBatchFile", "saveBatchGrade"]);
+    assert.deepEqual(actions, ["getAssignment", "getBatchFileSummary", "saveBatchGrade"]);
+  });
+});
+
+test("batch grading retries when Apps Script temporarily returns HTML", async () => {
+  let summaryAttempts = 0;
+  await withMockFetch(async (input, init = {}) => {
+    if (String(input) === env.APPS_SCRIPT_WEB_APP_URL) {
+      const payload = JSON.parse(init.body);
+      if (payload.action === "getAssignment") return jsonResponse({ ok: true, data: { title: "測試", description: "完成指定功能", rubric: [] } });
+      if (payload.action === "getBatchFileSummary") {
+        summaryAttempts += 1;
+        if (summaryAttempts === 1) return new Response("<!DOCTYPE html><html><title>暫時錯誤</title></html>", { status: 200 });
+        return jsonResponse({ ok: true, data: { unchanged: true, record: { totalScore: 90 } } });
+      }
+    }
+    throw new Error(`Unexpected fetch: ${input}`);
+  }, async () => {
+    const response = await batchGrading({
+      request: teacherRequest("https://example.test/api/batch-grading", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "grade", assignmentId: "abc123def456", fileId: "file1" }),
+      }),
+      env,
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).skipped, true);
+    assert.equal(summaryAttempts, 2);
   });
 });
 

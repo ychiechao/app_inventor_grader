@@ -1,9 +1,7 @@
-import { summarizeAia, limit } from "../_shared/aia.js";
+import { limit } from "../_shared/aia.js";
 import { gradeHomework } from "../_shared/grading.js";
 import { errorResponse, json, requireTeacher } from "../_shared/http.js";
 import { callAppsScript } from "../_shared/services.js";
-
-const MAX_BATCH_FILE_BYTES = 1_500_000;
 
 export async function onRequestPost({ request, env }) {
   const denied = requireTeacher(request, env);
@@ -20,12 +18,10 @@ export async function onRequestPost({ request, env }) {
     if (payload.action !== "grade") return json({ error: "不支援的批次操作" }, 400);
 
     const assignment = await callAppsScript(env, { action: "getAssignment", assignmentId });
-    const source = await callAppsScript(env, { action: "getBatchFile", assignmentId, fileId: payload.fileId });
+    const source = await callAppsScript(env, { action: "getBatchFileSummary", assignmentId, fileId: payload.fileId }, { attempts: 2 });
     if (source.unchanged) return json({ skipped: true, reason: "unchanged", record: source.record });
-    const buffer = Buffer.from(source.base64, "base64");
-    if (buffer.byteLength > MAX_BATCH_FILE_BYTES) return json({ error: "檔案超過批次評分大小限制", fileId: payload.fileId }, 413);
-    const file = { name: source.name, size: buffer.byteLength };
-    const aiaSummary = summarizeAia(file, buffer);
+    const aiaSummary = String(source.aiaSummary || "");
+    if (!aiaSummary) return json({ error: "無法取得 AIA 程式摘要", fileId: payload.fileId }, 422);
     const grade = await gradeHomework(env, assignment, aiaSummary);
     const saved = await callAppsScript(env, {
       action: "saveBatchGrade",

@@ -1,7 +1,7 @@
 const SCRIPT_TOKEN = PropertiesService.getScriptProperties().getProperty("APPS_SCRIPT_TOKEN");
 const ROOT_FOLDER_ID = "1zBnc5cX_oVeuw1KDti3uGMX4Cpy9mdB6";
 const REGISTRY_PROPERTY = "ASSIGNMENT_REGISTRY_SPREADSHEET_ID";
-const MAX_BATCH_FILE_BYTES = 1500000;
+const MAX_BATCH_FILE_BYTES = 8000000;
 const REGISTRY_HEADERS = [
   "Public ID", "Title", "Description", "Base Status", "Open At", "Close At",
   "Spreadsheet ID", "Spreadsheet URL", "Sample URL", "Rubric JSON", "Created At", "Updated At",
@@ -22,7 +22,7 @@ function doPost(e) {
       deleteAssignment: deleteAssignment_,
       checkSubmission: checkSubmission_,
       listBatchFiles: listBatchFiles_,
-      getBatchFile: getBatchFile_,
+      getBatchFileSummary: getBatchFileSummary_,
       saveBatchGrade: saveBatchGrade_,
       saveSubmission: saveSubmission_,
     };
@@ -231,7 +231,7 @@ function listBatchFiles_(payload) {
     };
     if (identity.valid && item.size > MAX_BATCH_FILE_BYTES) {
       item.status = "oversized";
-      item.error = "檔案超過 1.5 MB，請改用學生繳交頁個別處理";
+      item.error = "檔案超過 8 MB，請改用學生繳交頁個別處理";
     }
     if (identity.valid && item.status !== "oversized") {
       const key = batchStudentKey_(identity.className, identity.seatNumber);
@@ -258,16 +258,15 @@ function listBatchFiles_(payload) {
   return { folderId: folderId, folderName: folder.getName(), files: items, recordSheetUrl: resolved.spreadsheet.getUrl() + "#gid=" + getBatchSheet_(resolved.spreadsheet).getSheetId() };
 }
 
-function getBatchFile_(payload) {
+function getBatchFileSummary_(payload) {
   const resolved = resolveAssignment_(payload.assignmentId);
   const file = DriveApp.getFileById(String(payload.fileId || ""));
-  if (file.getSize() > MAX_BATCH_FILE_BYTES) throw new Error("檔案超過 1.5 MB，無法進行批次評分");
+  if (file.getSize() > MAX_BATCH_FILE_BYTES) throw new Error("檔案超過 8 MB，無法進行批次評分");
   const identity = parseBatchFileName_(file.getName());
   if (!identity.valid) throw new Error(identity.error);
   const updatedAt = file.getLastUpdated().toISOString();
   const existing = batchGradeMap_(resolved.spreadsheet)[batchStudentKey_(identity.className, identity.seatNumber)];
   if (existing && existing.fileId === file.getId() && existing.updatedAt === updatedAt) return { unchanged: true, record: existing };
-  const blob = file.getBlob();
   return {
     unchanged: false,
     fileId: file.getId(),
@@ -277,8 +276,52 @@ function getBatchFile_(payload) {
     className: identity.className,
     seatNumber: identity.seatNumber,
     studentName: identity.studentName,
-    base64: Utilities.base64Encode(blob.getBytes()),
+    aiaSummary: summarizeAiaBlob_(file),
   };
+}
+
+function summarizeAiaBlob_(file) {
+  let entries;
+  try {
+    entries = Utilities.unzip(file.getBlob().setContentType("application/zip"));
+  } catch (error) {
+    throw new Error("無法解壓縮 AIA，檔案可能損壞或不是有效的 App Inventor 專案");
+  }
+  const properties = [];
+  const screens = [];
+  const blocks = [];
+  const screenNames = [];
+  const blockNames = [];
+  entries.forEach(function (blob) {
+    const name = blob.getName();
+    if (/project\.properties$|\.properties$/i.test(name)) properties.push(blobText_(blob, name));
+    else if (/\.scm$/i.test(name)) { screenNames.push(name); screens.push(blobText_(blob, name)); }
+    else if (/\.bky$/i.test(name)) { blockNames.push(name); blocks.push(blobText_(blob, name)); }
+  });
+  return [
+    "AIA file name: " + file.getName(),
+    "AIA file size: " + file.getSize() + " bytes",
+    "ZIP entries: " + entries.length,
+    "Screen (.scm) files: " + (screenNames.join(", ") || "none"),
+    "Blocks (.bky) files: " + (blockNames.join(", ") || "none"),
+    "",
+    "Project properties:",
+    limitText_(properties.slice(0, 4).join("\n\n") || "none", 3000),
+    "",
+    "Screen/component source (.scm):",
+    limitText_(screens.slice(0, 8).join("\n\n") || "none", 18000),
+    "",
+    "Blocks source (.bky XML):",
+    limitText_(blocks.slice(0, 8).join("\n\n") || "none", 28000),
+  ].join("\n");
+}
+
+function blobText_(blob, name) {
+  return "--- " + name + " ---\n" + blob.getDataAsString("UTF-8");
+}
+
+function limitText_(text, max) {
+  return text.length <= max ? text : text.slice(0, max) + "\n...[truncated " + (text.length - max) + " chars]";
 }
 
 function saveBatchGrade_(payload) {
