@@ -374,7 +374,9 @@ async function scanBatchFolder(event, assignmentId) {
     renderBatchFiles();
     const actionable = batchFiles.filter((item) => ["pending", "updated"].includes(item.status)).length;
     summary.textContent = `「${data.folderName}」共找到 ${batchFiles.length} 個 .aia，可評分 ${actionable} 個。`;
-    document.querySelector("#batch-start").disabled = actionable === 0;
+    const startButton = document.querySelector("#batch-start");
+    startButton.disabled = actionable === 0;
+    startButton.title = actionable === 0 ? "沒有需要重新評分的檔案" : `開始評分 ${actionable} 個檔案`;
     const link = document.querySelector("#batch-sheet-link");
     link.href = data.recordSheetUrl;
     link.hidden = false;
@@ -384,7 +386,10 @@ async function scanBatchFolder(event, assignmentId) {
     renderBatchFiles();
   } finally {
     setFormBusy(form, false);
-    document.querySelector("#batch-start").disabled = batchFiles.filter((item) => ["pending", "updated"].includes(item.status)).length === 0;
+    const startButton = document.querySelector("#batch-start");
+    const actionable = batchFiles.filter((item) => ["pending", "updated"].includes(item.status)).length;
+    startButton.disabled = actionable === 0;
+    startButton.title = actionable === 0 ? "沒有需要重新評分的檔案" : `開始評分 ${actionable} 個檔案`;
   }
 }
 
@@ -396,6 +401,8 @@ async function startBatchGrading(assignmentId) {
   const startButton = document.querySelector("#batch-start");
   const summary = document.querySelector("#batch-summary");
   startButton.disabled = true;
+  startButton.classList.add("is-busy-button");
+  startButton.title = "批次評分進行中";
   let completed = 0;
   let failed = 0;
   for (const item of queue) {
@@ -419,6 +426,8 @@ async function startBatchGrading(assignmentId) {
   batchRunning = false;
   summary.textContent = `批次評分完成：成功 ${completed}，失敗 ${failed}。`;
   startButton.disabled = true;
+  startButton.classList.remove("is-busy-button");
+  startButton.title = "沒有需要重新評分的檔案";
   await refreshBatchRecords(assignmentId);
 }
 
@@ -487,6 +496,7 @@ function localToIso(value) { return value ? new Date(value).toISOString() : ""; 
 function setPageTitle(title) { document.title = `${title} | 超哥 App Inventor 學習幫手`; }
 function setFormError(element, message, field) { element.textContent = message; field?.focus(); }
 function setFormBusy(form, busy) {
+  form.classList.toggle("is-busy", busy);
   form.querySelectorAll("button").forEach((button) => {
     if (busy) {
       button.dataset.restoreLabel = button.textContent;

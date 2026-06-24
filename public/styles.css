@@ -56,7 +56,8 @@ h1, h2, p { margin: 0; }
 .icon-button { width: 40px; min-height: 40px; border: 1px solid #d1d8ce; padding: 0; color: #34404d; background: #fff; font-size: 1.15rem; }
 .icon-button:hover { border-color: #9baba0; background: #f2f5f1; }
 .full-width { width: 100%; }
-button:disabled { opacity: 0.65; cursor: wait; }
+button:disabled { opacity: 0.65; cursor: not-allowed; }
+.is-busy button:disabled, button.is-busy-button:disabled { cursor: wait; }
 
 .assignment-list { display: grid; gap: 12px; }
 .assignment-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 22px; align-items: center; padding: 20px 22px; border: 1px solid #d8ded5; border-radius: 8px; background: #fff; box-shadow: 0 8px 22px rgb(31 41 55 / 0.04); }
@@ -135,7 +136,7 @@ textarea { resize: vertical; }
 .row-actions .icon-button { width: 34px; min-height: 34px; font-size: 1rem; }
 .danger-icon-button { color: #b42318; }
 .danger-icon-button:hover { border-color: #d92d20; color: #8f1d14; background: #fff1f0; }
-.danger-icon-button:disabled { cursor: wait; opacity: 0.45; }
+.danger-icon-button:disabled { opacity: 0.45; }
 .batch-panel { margin-bottom: 24px; padding: 20px; border: 1px solid #d8ded5; background: #fff; }
 .batch-heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
 .batch-heading h2, .section-heading h2 { font-size: 1.15rem; }
